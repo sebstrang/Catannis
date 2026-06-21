@@ -108,7 +108,11 @@
     overflow: hidden;
     touch-action: manipulation;
   }
-  #board { width: 100%; height: 100%; cursor: pointer; }
+  #board {
+    width: 100%; height: 100%; cursor: grab;
+    transform-origin: 0 0; touch-action: none; will-change: transform;
+  }
+  #board:active { cursor: grabbing; }
   #board svg { width: 100%; height: 100%; display: block; }
 
   .footer-note {
@@ -480,10 +484,10 @@ function render(map, opts) {
   const portReach = 46;
   map.ports.forEach(p => {
     const px = p.mx + p.nx * portReach, py = p.my + p.ny * portReach;
-    minX = Math.min(minX, px - 26); maxX = Math.max(maxX, px + 26);
-    minY = Math.min(minY, py - 26); maxY = Math.max(maxY, py + 26);
+    minX = Math.min(minX, px - 19); maxX = Math.max(maxX, px + 19);
+    minY = Math.min(minY, py - 19); maxY = Math.max(maxY, py + 19);
   });
-  const pad = 30;
+  const pad = 8;
   const vbX = minX - pad, vbY = minY - pad;
   const vbW = (maxX - minX) + pad * 2, vbH = (maxY - minY) + pad * 2;
 
@@ -536,6 +540,7 @@ function render(map, opts) {
   const host = document.getElementById("board");
   host.innerHTML = "";
   host.appendChild(svg);
+  ZOOM.reset();
 }
 
 function drawToken(g, x, y, num) {
@@ -675,7 +680,98 @@ function exportPng() {
 
 /* ---------- wiring ---------- */
 document.getElementById("regen").addEventListener("click", () => regenerate(true));
-document.getElementById("board").addEventListener("click", () => regenerate(true));
+
+/* ---------- pinch / drag / wheel zoom + pan on the board ----------
+   - one-finger drag (or mouse drag) pans
+   - two-finger pinch zooms around the pinch point
+   - mouse wheel zooms around the cursor
+   - a tap/click that doesn't move regenerates the map
+   - reset() re-centres on every new map, slightly zoomed-in on phones        */
+const ZOOM = (function () {
+  const board = document.getElementById("board");
+  const stage = board.parentElement;
+  const MIN = 1, MAX = 6, TAP_MOVE = 8, MOBILE_INIT = 1.18;
+  let scale = 1, tx = 0, ty = 0;
+  const pts = new Map();
+  let pinch = null, pan = null, gestureMoved = false;
+
+  const apply = () => { board.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; };
+  function clampPan() {
+    const W = board.clientWidth, H = board.clientHeight;
+    tx = Math.min(0, Math.max(W - W * scale, tx));
+    ty = Math.min(0, Math.max(H - H * scale, ty));
+  }
+  const origin = () => { const r = stage.getBoundingClientRect(); return { l: r.left, t: r.top }; };
+
+  function reset() {
+    scale = innerWidth <= 760 ? MOBILE_INIT : 1;
+    tx = -board.clientWidth * (scale - 1) / 2;   // keep it centred
+    ty = -board.clientHeight * (scale - 1) / 2;
+    clampPan();
+    board.style.transition = "transform .25s ease";
+    apply();
+    setTimeout(() => { board.style.transition = ""; }, 260);
+  }
+  function zoomAt(rx, ry, next) {
+    next = Math.min(MAX, Math.max(MIN, next));
+    const lx = (rx - tx) / scale, ly = (ry - ty) / scale;
+    scale = next;
+    tx = rx - lx * scale; ty = ry - ly * scale;
+    clampPan(); apply();
+  }
+
+  board.addEventListener("pointerdown", (e) => {
+    board.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) {
+      pan = { x0: e.clientX, y0: e.clientY, tx0: tx, ty0: ty };
+      gestureMoved = false;
+    } else if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      pinch = { dist0: Math.hypot(a.x - b.x, a.y - b.y), scale0: scale };
+      pan = null; gestureMoved = true;
+    }
+  });
+  board.addEventListener("pointermove", (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const o = origin();
+    if (pts.size >= 2 && pinch) {
+      const [a, b] = [...pts.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      zoomAt((a.x + b.x) / 2 - o.l, (a.y + b.y) / 2 - o.t, pinch.scale0 * dist / pinch.dist0);
+    } else if (pan) {
+      tx = pan.tx0 + (e.clientX - pan.x0);
+      ty = pan.ty0 + (e.clientY - pan.y0);
+      if (Math.hypot(e.clientX - pan.x0, e.clientY - pan.y0) > TAP_MOVE) gestureMoved = true;
+      clampPan(); apply();
+    }
+  });
+  function up(e) {
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    try { board.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 1) {                 // lifted one finger of a pinch -> keep panning
+      const [p] = [...pts.values()];
+      pan = { x0: p.x, y0: p.y, tx0: tx, ty0: ty };
+      pinch = null;
+    } else if (pts.size === 0) {
+      const wasTap = !gestureMoved;
+      pinch = null; pan = null;
+      if (wasTap) regenerate(true);
+    }
+  }
+  board.addEventListener("pointerup", up);
+  board.addEventListener("pointercancel", up);
+  board.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const o = origin();
+    zoomAt(e.clientX - o.l, e.clientY - o.t, scale * Math.exp(-e.deltaY * 0.0015));
+  }, { passive: false });
+  addEventListener("resize", () => { clampPan(); apply(); });
+
+  return { reset };
+})();
 
 // mobile: slide-up settings drawer + floating generate
 const closeDrawer = () => document.body.classList.remove("drawer-open");

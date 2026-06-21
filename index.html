@@ -684,6 +684,46 @@ document.getElementById("menuBtn").addEventListener("click", () =>
 document.getElementById("drawerClose").addEventListener("click", closeDrawer);
 document.getElementById("backdrop").addEventListener("click", closeDrawer);
 document.getElementById("genBtnMobile").addEventListener("click", () => regenerate(true));
+
+// mobile: swipe the drawer down to dismiss
+(function enableSwipeToClose() {
+  const sheet = document.querySelector(".sidebar");
+  let startY = 0, dy = 0, dragging = false, decided = false;
+  const isOpen = () => document.body.classList.contains("drawer-open");
+
+  sheet.addEventListener("touchstart", (e) => {
+    if (!isOpen()) return;
+    startY = e.touches[0].clientY;
+    dy = 0; dragging = false; decided = false;
+  }, { passive: true });
+
+  sheet.addEventListener("touchmove", (e) => {
+    if (!isOpen()) return;
+    const delta = e.touches[0].clientY - startY;
+    if (!decided) {
+      if (Math.abs(delta) < 6) return;          // ignore tiny jitters
+      decided = true;
+      // only hijack as a dismiss-drag when pulling down from the top
+      dragging = delta > 0 && sheet.scrollTop <= 0;
+      if (dragging) sheet.style.transition = "none";
+    }
+    if (dragging) {
+      dy = Math.max(0, delta);
+      sheet.style.transform = "translateY(" + dy + "px)";
+      e.preventDefault();                        // stop the list from scrolling
+    }
+  }, { passive: false });
+
+  const end = () => {
+    if (!dragging) return;
+    sheet.style.transition = "";                 // restore the CSS slide animation
+    sheet.style.transform = "";                  // hand control back to the class rules
+    if (dy > 90) document.body.classList.remove("drawer-open");
+    dragging = false; decided = false;
+  };
+  sheet.addEventListener("touchend", end);
+  sheet.addEventListener("touchcancel", end);
+})();
 document.getElementById("exportPng").addEventListener("click", exportPng);
 document.getElementById("copyLink").addEventListener("click", () => {
   navigator.clipboard.writeText(location.href).then(() => {

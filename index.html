@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Catannis — Catan Map Generator</title>
+<style>
+  :root {
+    --bg: #0f1f2e;
+    --panel: #16293b;
+    --panel-2: #1d3346;
+    --line: #2c455c;
+    --text: #e8eef4;
+    --muted: #8fa6bb;
+    --accent: #ffb347;
+    --accent-2: #4aa3df;
+    --sea: #1b6ca8;
+    --sea-deep: #14507c;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    height: 100%;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: 100vh;
+  }
+  .sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .brand {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    margin: 0 0 2px;
+  }
+  .brand span { color: var(--accent); }
+  .tagline { color: var(--muted); font-size: 12px; margin-bottom: 20px; }
+
+  .group { margin-bottom: 22px; }
+  .group h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin: 0 0 10px; font-weight: 700;
+  }
+
+  .toggle {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; margin-bottom: 8px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; cursor: pointer; user-select: none;
+    transition: border-color .15s, background .15s;
+  }
+  .toggle:hover { border-color: var(--accent-2); }
+  .toggle input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .toggle .label { font-size: 14px; font-weight: 600; }
+  .toggle .sub { font-size: 11px; color: var(--muted); display:block; margin-top:1px; }
+  .toggle .txt { flex: 1; }
+
+  button {
+    font-family: inherit; cursor: pointer; border: none; border-radius: 8px;
+    font-weight: 700; transition: transform .05s, filter .15s;
+  }
+  button:active { transform: translateY(1px); }
+  .btn-primary {
+    width: 100%; padding: 14px; font-size: 16px;
+    background: linear-gradient(135deg, var(--accent), #ff9838);
+    color: #2a1a00; margin-bottom: 8px;
+  }
+  .btn-primary:hover { filter: brightness(1.05); }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-secondary {
+    flex: 1; padding: 10px; font-size: 13px;
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+  }
+  .btn-secondary:hover { border-color: var(--accent-2); }
+
+  .seedbox { display: flex; gap: 8px; margin-top: 8px; }
+  .seedbox input {
+    flex: 1; min-width: 0; padding: 9px 10px; font-size: 13px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; color: var(--text); font-family: ui-monospace, monospace;
+  }
+  .seedbox input:focus { outline: none; border-color: var(--accent-2); }
+
+  .legend { display: flex; flex-direction: column; gap: 6px; }
+  .legend .row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .legend .sw { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,.3); }
+  .legend .ct { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .hint { font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: 8px; }
+  kbd {
+    background: var(--panel-2); border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 4px; padding: 1px 6px; font-size: 11px; font-family: ui-monospace, monospace;
+  }
+
+  .stage {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(circle at 50% 40%, #1f7bb6 0%, var(--sea) 45%, var(--sea-deep) 100%);
+    overflow: hidden;
+  }
+  #board { width: 100%; height: 100%; }
+  #board svg { width: 100%; height: 100%; display: block; }
+
+  .footer-note {
+    position: absolute; bottom: 10px; right: 14px;
+    font-size: 11px; color: rgba(255,255,255,.55);
+  }
+
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .sidebar { max-height: 45vh; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <h1 class="brand">Cat<span>annis</span></h1>
+    <div class="tagline">A better Catan map generator</div>
+
+    <div class="group">
+      <button class="btn-primary" id="regen">🎲 Generate Map</button>
+      <div class="btn-row">
+        <button class="btn-secondary" id="copyLink">🔗 Copy Link</button>
+        <button class="btn-secondary" id="exportPng">🖼 Export PNG</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Board</h3>
+      <label class="toggle">
+        <input type="checkbox" id="opt-expansion" />
+        <span class="txt"><span class="label">5–6 Player Expansion</span>
+          <span class="sub">30 hexes instead of 19</span></span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="opt-ports" checked />
+        <span class="txt"><span class="label">Harbors / Ports</span>
+          <span class="sub">Show trading ports around the coast</span></span>
+      </label>
+    </div>
+
+    <div class="group">
+      <h3>Number Placement</h3>
+      <label class="toggle">
+        <input type="checkbox" id="opt-random" />
+        <span class="txt"><span class="label">Fully Random Numbers</span>
+          <span class="sub">Off = balanced (no 6 / 8 touching)</span></span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="opt-nosame" />
+        <span class="txt"><span class="label">No Same Resource Adjacent</span>
+          <span class="sub">Avoid clumps of identical tiles</span></span>
+      </label>
+    </div>
+
+    <div class="group">
+      <h3>Seed</h3>
+      <div class="seedbox">
+        <input type="text" id="seed" inputmode="numeric" />
+        <button class="btn-secondary" id="useSeed" style="flex:0 0 auto;">Use</button>
+      </div>
+      <div class="hint">Same seed + same options always makes the same map. Share the link to share the map.</div>
+    </div>
+
+    <div class="group">
+      <h3>Tiles</h3>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="hint">
+      Press <kbd>Space</kbd> to regenerate · <kbd>R</kbd> random seed<br/>
+      Red numbers (6 &amp; 8) are the most likely rolls.
+    </div>
+  </aside>
+
+  <main class="stage">
+    <div id="board"></div>
+    <div class="footer-note" id="status"></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+const NS = "http://www.w3.org/2000/svg";
+
+/* ---------- geometry ---------- */
+const SIZE = 50;                     // hex radius (center -> vertex)
+const HEXW = Math.sqrt(3) * SIZE;    // hex width (flat to flat horizontally)
+const VROW = 1.5 * SIZE;             // vertical distance between rows
+
+const LAYOUTS = {
+  base: [3, 4, 5, 4, 3],
+  expansion: [3, 4, 5, 6, 5, 4, 3],
+};
+
+/* ---------- tile definitions ---------- */
+const RESOURCES = {
+  wood:  { color: "#2f7d33", label: "Wood",  icon: "🌲" },
+  brick: { color: "#bd5b3c", label: "Brick", icon: "🧱" },
+  sheep: { color: "#8ec64a", label: "Sheep", icon: "🐑" },
+  wheat: { color: "#e7b22b", label: "Wheat", icon: "🌾" },
+  ore:   { color: "#7d8a99", label: "Ore",   icon: "⛰" },
+  desert:{ color: "#d9c08a", label: "Desert",icon: "🌵" },
+};
+
+const BAGS = {
+  base: {
+    tiles: { wood:4, brick:3, sheep:4, wheat:4, ore:3, desert:1 },
+    numbers: [2,3,3,4,4,5,5,6,6,8,8,9,9,10,10,11,11,12],
+    ports: 9,
+  },
+  expansion: {
+    tiles: { wood:6, brick:5, sheep:6, wheat:6, ore:5, desert:2 },
+    numbers: [2,2,3,3,3,4,4,4,5,5,5,6,6,6,8,8,8,9,9,9,10,10,10,11,11,11,12,12],
+    ports: 11,
+  },
+};
+
+const PIPS = {2:1,3:2,4:3,5:4,6:5,8:5,9:4,10:3,11:2,12:1};
+
+/* ---------- seeded RNG (mulberry32) ---------- */
+function makeRng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function shuffle(arr, rng) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/* ---------- layout + adjacency ---------- */
+function hexCenters(layout) {
+  const rows = layout.length;
+  const centers = [];
+  layout.forEach((count, r) => {
+    for (let i = 0; i < count; i++) {
+      const x = (i - (count - 1) / 2) * HEXW;
+      const y = (r - (rows - 1) / 2) * VROW;
+      centers.push({ x, y, id: centers.length });
+    }
+  });
+  return centers;
+}
+function buildAdjacency(centers) {
+  const adj = centers.map(() => []);
+  const thresh = HEXW * 1.15;
+  for (let i = 0; i < centers.length; i++) {
+    for (let j = i + 1; j < centers.length; j++) {
+      const dx = centers[i].x - centers[j].x;
+      const dy = centers[i].y - centers[j].y;
+      if (Math.hypot(dx, dy) < thresh) { adj[i].push(j); adj[j].push(i); }
+    }
+  }
+  return adj;
+}
+function hexVertices(cx, cy, s) {
+  const v = [];
+  for (let i = 0; i < 6; i++) {
+    const a = ((60 * i - 90) * Math.PI) / 180;
+    v.push([cx + s * Math.cos(a), cy + s * Math.sin(a)]);
+  }
+  return v;
+}
+
+/* ---------- map generation ---------- */
+function buildBag(counts) {
+  const out = [];
+  for (const k in counts) for (let i = 0; i < counts[k]; i++) out.push(k);
+  return out;
+}
+
+function generate(opts) {
+  const key = opts.expansion ? "expansion" : "base";
+  const layout = LAYOUTS[key];
+  const bag = BAGS[key];
+  const rng = makeRng(opts.seed);
+
+  const centers = hexCenters(layout);
+  const adj = buildAdjacency(centers);
+
+  /* --- resources --- */
+  let resources = null;
+  const wantNoSame = opts.noSameAdjacent;
+  for (let attempt = 0; attempt < 3000; attempt++) {
+    const candidate = shuffle(buildBag(bag.tiles), rng);
+    if (!wantNoSame) { resources = candidate; break; }
+    let ok = true;
+    for (let i = 0; i < candidate.length && ok; i++) {
+      if (candidate[i] === "desert") continue;
+      for (const n of adj[i]) {
+        if (n > i && candidate[n] === candidate[i]) { ok = false; break; }
+      }
+    }
+    if (ok) { resources = candidate; break; }
+  }
+  if (!resources) resources = shuffle(buildBag(bag.tiles), rng); // fallback
+
+  /* --- numbers --- */
+  const landIdx = resources.map((r, i) => (r === "desert" ? -1 : i)).filter(i => i >= 0);
+  const numbers = new Array(resources.length).fill(null);
+  const balanced = !opts.fullyRandom;
+
+  let placed = false;
+  for (let attempt = 0; attempt < 4000; attempt++) {
+    const toks = shuffle(bag.numbers.slice(), rng);
+    const assign = new Array(resources.length).fill(null);
+    landIdx.forEach((idx, k) => { assign[idx] = toks[k]; });
+    if (!balanced) { for (let i = 0; i < assign.length; i++) numbers[i] = assign[i]; placed = true; break; }
+    // balanced: no two red (6/8) adjacent
+    let ok = true;
+    for (let i = 0; i < assign.length && ok; i++) {
+      const red = assign[i] === 6 || assign[i] === 8;
+      if (!red) continue;
+      for (const n of adj[i]) {
+        if (assign[n] === 6 || assign[n] === 8) { ok = false; break; }
+      }
+    }
+    if (ok) { for (let i = 0; i < assign.length; i++) numbers[i] = assign[i]; placed = true; break; }
+  }
+  if (!placed) { // fallback: ignore constraint
+    const toks = shuffle(bag.numbers.slice(), rng);
+    landIdx.forEach((idx, k) => { numbers[idx] = toks[k]; });
+  }
+
+  /* --- ports --- */
+  let ports = [];
+  if (opts.ports) ports = computePorts(centers, bag.ports, rng);
+
+  return { centers, resources, numbers, ports, adj, layout };
+}
+
+/* ---------- ports: place on real outer coastline edges ---------- */
+function computePorts(centers, count, rng) {
+  // collect every edge; an edge shared by 2 hexes is interior
+  const edgeMap = new Map();
+  centers.forEach((c) => {
+    const v = hexVertices(c.x, c.y, SIZE);
+    for (let i = 0; i < 6; i++) {
+      const a = v[i], b = v[(i + 1) % 6];
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      const k = Math.round(mx) + "," + Math.round(my);
+      if (!edgeMap.has(k)) edgeMap.set(k, { a, b, mx, my, count: 0, cx: c.x, cy: c.y });
+      edgeMap.get(k).count++;
+    }
+  });
+  const outer = [...edgeMap.values()].filter(e => e.count === 1);
+  // sort around the centroid by angle for even distribution
+  outer.forEach(e => { e.ang = Math.atan2(e.my, e.mx); });
+  outer.sort((a, b) => a.ang - b.ang);
+
+  // port type bag: one 2:1 per resource, rest generic 3:1
+  const specifics = ["wood", "brick", "sheep", "wheat", "ore"];
+  const types = specifics.slice();
+  while (types.length < count) types.push("any");
+  shuffle(types, rng);
+
+  const ports = [];
+  for (let i = 0; i < count; i++) {
+    const e = outer[Math.round((i * outer.length) / count) % outer.length];
+    if (!e) continue;
+    const nx = e.mx - e.cx, ny = e.my - e.cy;
+    const len = Math.hypot(nx, ny) || 1;
+    ports.push({
+      a: e.a, b: e.b, mx: e.mx, my: e.my,
+      nx: nx / len, ny: ny / len,
+      type: types[i],
+    });
+  }
+  return ports;
+}
+
+/* ---------- rendering ---------- */
+function el(tag, attrs, parent) {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+function render(map, opts) {
+  // bounds
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  map.centers.forEach(c => {
+    hexVertices(c.x, c.y, SIZE).forEach(([x, y]) => {
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    });
+  });
+  const portReach = 46;
+  map.ports.forEach(p => {
+    const px = p.mx + p.nx * portReach, py = p.my + p.ny * portReach;
+    minX = Math.min(minX, px - 26); maxX = Math.max(maxX, px + 26);
+    minY = Math.min(minY, py - 26); maxY = Math.max(maxY, py + 26);
+  });
+  const pad = 30;
+  const vbX = minX - pad, vbY = minY - pad;
+  const vbW = (maxX - minX) + pad * 2, vbH = (maxY - minY) + pad * 2;
+
+  const svg = el("svg", {
+    viewBox: `${vbX} ${vbY} ${vbW} ${vbH}`,
+    xmlns: NS, "font-family": "Segoe UI, system-ui, sans-serif",
+  });
+
+  // sea background (so PNG export has the ocean too)
+  el("rect", { x: vbX, y: vbY, width: vbW, height: vbH, fill: "#1b6ca8" }, svg);
+
+  // ports first (drawn under tiles' overlap region but above sea)
+  const portLayer = el("g", {}, svg);
+  map.ports.forEach(p => drawPort(portLayer, p));
+
+  // tiles
+  map.centers.forEach((c, i) => {
+    const res = map.resources[i];
+    const def = RESOURCES[res];
+    const pts = hexVertices(c.x, c.y, SIZE).map(v => v.map(n => n.toFixed(2)).join(",")).join(" ");
+    const g = el("g", {}, svg);
+    el("polygon", {
+      points: pts, fill: def.color,
+      stroke: "rgba(0,0,0,.35)", "stroke-width": 2,
+      "stroke-linejoin": "round",
+    }, g);
+    // subtle top highlight
+    el("polygon", { points: pts, fill: "url(#hexShade)" }, g);
+    // resource icon (faint, centered top)
+    const ico = el("text", {
+      x: c.x, y: c.y - 14, "text-anchor": "middle", "font-size": 26,
+      opacity: res === "desert" ? 0.85 : 0.5,
+    }, g);
+    ico.textContent = def.icon;
+
+    if (map.numbers[i] != null) drawToken(g, c.x, c.y + 14, map.numbers[i]);
+    if (res === "desert") {
+      const rob = el("text", { x: c.x, y: c.y + 22, "text-anchor": "middle", "font-size": 22 }, g);
+      rob.textContent = "🤖";
+    }
+  });
+
+  // gradient defs
+  const defs = el("defs", {}, svg);
+  const grad = el("linearGradient", { id: "hexShade", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+  el("stop", { offset: 0, "stop-color": "#ffffff", "stop-opacity": 0.18 }, grad);
+  el("stop", { offset: 0.5, "stop-color": "#ffffff", "stop-opacity": 0 }, grad);
+  el("stop", { offset: 1, "stop-color": "#000000", "stop-opacity": 0.12 }, grad);
+
+  const host = document.getElementById("board");
+  host.innerHTML = "";
+  host.appendChild(svg);
+}
+
+function drawToken(g, x, y, num) {
+  const red = num === 6 || num === 8;
+  el("circle", { cx: x, cy: y, r: 18, fill: "#f4ecd8", stroke: "rgba(0,0,0,.35)", "stroke-width": 1.5 }, g);
+  const t = el("text", {
+    x: x, y: y + 1, "text-anchor": "middle", "dominant-baseline": "central",
+    "font-size": red ? 20 : 18, "font-weight": 800,
+    fill: red ? "#c0392b" : "#222",
+  }, g);
+  t.textContent = num;
+  // pips
+  const n = PIPS[num] || 0;
+  const pr = 1.6, gap = 4.2;
+  const startX = x - ((n - 1) * gap) / 2;
+  for (let k = 0; k < n; k++) {
+    el("circle", { cx: startX + k * gap, cy: y + 12, r: pr, fill: red ? "#c0392b" : "#444" }, g);
+  }
+}
+
+function drawPort(g, p) {
+  const cx = p.mx + p.nx * 30, cy = p.my + p.ny * 30;
+  const def = p.type === "any" ? null : RESOURCES[p.type];
+  // dock lines from the two edge corners to the port hub
+  el("line", { x1: p.a[0], y1: p.a[1], x2: cx, y2: cy, stroke: "#6b4a2b", "stroke-width": 4, "stroke-linecap": "round" }, g);
+  el("line", { x1: p.b[0], y1: p.b[1], x2: cx, y2: cy, stroke: "#6b4a2b", "stroke-width": 4, "stroke-linecap": "round" }, g);
+  el("circle", { cx, cy, r: 17, fill: "#efe6d2", stroke: "#6b4a2b", "stroke-width": 2.5 }, g);
+  if (def) {
+    const ico = el("text", { x: cx, y: cy - 3, "text-anchor": "middle", "font-size": 15 }, g);
+    ico.textContent = def.icon;
+    const r = el("text", { x: cx, y: cy + 10, "text-anchor": "middle", "font-size": 8, "font-weight": 800, fill: "#333" }, g);
+    r.textContent = "2:1";
+  } else {
+    const r = el("text", { x: cx, y: cy + 1, "text-anchor": "middle", "dominant-baseline": "central", "font-size": 11, "font-weight": 800, fill: "#333" }, g);
+    r.textContent = "3:1";
+  }
+}
+
+/* ---------- legend ---------- */
+function renderLegend(opts) {
+  const key = opts.expansion ? "expansion" : "base";
+  const tiles = BAGS[key].tiles;
+  const box = document.getElementById("legend");
+  box.innerHTML = "";
+  Object.keys(RESOURCES).forEach(k => {
+    if (!tiles[k]) return;
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML =
+      `<span class="sw" style="background:${RESOURCES[k].color}"></span>` +
+      `<span>${RESOURCES[k].icon} ${RESOURCES[k].label}</span>` +
+      `<span class="ct">×${tiles[k]}</span>`;
+    box.appendChild(row);
+  });
+}
+
+/* ---------- options + state ---------- */
+function readOpts() {
+  return {
+    expansion: document.getElementById("opt-expansion").checked,
+    ports: document.getElementById("opt-ports").checked,
+    fullyRandom: document.getElementById("opt-random").checked,
+    noSameAdjacent: document.getElementById("opt-nosame").checked,
+    seed: parseInt(document.getElementById("seed").value, 10) || 1,
+  };
+}
+function writeOptsToUI(o) {
+  document.getElementById("opt-expansion").checked = o.expansion;
+  document.getElementById("opt-ports").checked = o.ports;
+  document.getElementById("opt-random").checked = o.fullyRandom;
+  document.getElementById("opt-nosame").checked = o.noSameAdjacent;
+  document.getElementById("seed").value = o.seed;
+}
+
+function encodeHash(o) {
+  return `#seed=${o.seed}&exp=${o.expansion?1:0}&ports=${o.ports?1:0}` +
+         `&rand=${o.fullyRandom?1:0}&nsr=${o.noSameAdjacent?1:0}`;
+}
+function decodeHash() {
+  const h = location.hash.replace(/^#/, "");
+  if (!h) return null;
+  const p = Object.fromEntries(h.split("&").map(s => s.split("=")));
+  if (p.seed == null) return null;
+  return {
+    seed: parseInt(p.seed, 10) || 1,
+    expansion: p.exp === "1",
+    ports: p.ports !== "0",
+    fullyRandom: p.rand === "1",
+    noSameAdjacent: p.nsr === "1",
+  };
+}
+
+let current = null;
+function run(opts) {
+  current = opts;
+  writeOptsToUI(opts);
+  renderLegend(opts);
+  const map = generate(opts);
+  render(map, opts);
+  history.replaceState(null, "", encodeHash(opts));
+  const mode = opts.fullyRandom ? "fully random" : "balanced";
+  document.getElementById("status").textContent =
+    `${opts.expansion ? "5–6 player" : "3–4 player"} · ${mode} · seed ${opts.seed}`;
+}
+
+function regenerate(newSeed = true) {
+  const o = readOpts();
+  if (newSeed) o.seed = Math.floor(Math.random() * 1e9);
+  run(o);
+}
+
+/* ---------- PNG export ---------- */
+function exportPng() {
+  const svg = document.querySelector("#board svg");
+  if (!svg) return;
+  const data = new XMLSerializer().serializeToString(svg);
+  const svg64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(data)));
+  const img = new Image();
+  img.onload = () => {
+    const scale = 2;
+    const vb = svg.viewBox.baseVal;
+    const canvas = document.createElement("canvas");
+    canvas.width = vb.width * scale;
+    canvas.height = vb.height * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0, vb.width, vb.height);
+    canvas.toBlob(b => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(b);
+      a.download = `catannis-${current.seed}.png`;
+      a.click();
+    });
+  };
+  img.src = svg64;
+}
+
+/* ---------- wiring ---------- */
+document.getElementById("regen").addEventListener("click", () => regenerate(true));
+document.getElementById("exportPng").addEventListener("click", exportPng);
+document.getElementById("copyLink").addEventListener("click", () => {
+  navigator.clipboard.writeText(location.href).then(() => {
+    const b = document.getElementById("copyLink");
+    const old = b.textContent; b.textContent = "✓ Copied";
+    setTimeout(() => (b.textContent = old), 1200);
+  });
+});
+document.getElementById("useSeed").addEventListener("click", () => run(readOpts()));
+document.getElementById("seed").addEventListener("keydown", e => { if (e.key === "Enter") run(readOpts()); });
+
+["opt-expansion", "opt-ports", "opt-random", "opt-nosame"].forEach(id => {
+  document.getElementById(id).addEventListener("change", () => run(readOpts()));
+});
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.code === "Space" || e.key === "r" || e.key === "R") {
+    e.preventDefault();
+    regenerate(true);   // fresh seed -> new map
+  }
+});
+
+window.addEventListener("hashchange", () => {
+  const o = decodeHash();
+  if (o) run(o);
+});
+
+/* ---------- init ---------- */
+const initial = decodeHash() || {
+  seed: Math.floor(Math.random() * 1e9),
+  expansion: false, ports: true, fullyRandom: false, noSameAdjacent: false,
+};
+run(initial);
+</script>
+</body>
+</html>

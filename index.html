@@ -106,18 +106,40 @@
     background:
       radial-gradient(circle at 50% 40%, #1f7bb6 0%, var(--sea) 45%, var(--sea-deep) 100%);
     overflow: hidden;
+    touch-action: manipulation;
   }
-  #board { width: 100%; height: 100%; }
+  #board { width: 100%; height: 100%; cursor: pointer; }
   #board svg { width: 100%; height: 100%; display: block; }
 
   .footer-note {
     position: absolute; bottom: 10px; right: 14px;
     font-size: 11px; color: rgba(255,255,255,.55);
+    pointer-events: none;
   }
+  .kbds { display: inline; }
 
   @media (max-width: 760px) {
-    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-    .sidebar { max-height: 45vh; }
+    html, body { height: auto; }
+    .app {
+      display: flex; flex-direction: column;
+      height: 100vh; height: 100dvh;
+    }
+    /* board on top, fills the screen and is always visible */
+    .stage { order: -1; flex: 1 1 auto; min-height: 240px; }
+    .sidebar {
+      flex: 0 0 auto; width: 100%; max-height: 48vh;
+      border-right: none; border-top: 1px solid var(--line);
+      padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+      -webkit-overflow-scrolling: touch;
+    }
+    .brand { font-size: 19px; }
+    .tagline { display: none; }
+    .group { margin-bottom: 13px; }
+    .group h3 { margin-bottom: 6px; }
+    .toggle { padding: 9px 11px; }
+    .toggle .sub { display: none; }
+    .footer-note { font-size: 10px; bottom: 8px; right: 10px; }
+    .kbds { display: none; }   /* no physical keyboard on phones */
   }
 </style>
 </head>
@@ -178,7 +200,7 @@
     </div>
 
     <div class="hint">
-      Press <kbd>Space</kbd> to regenerate · <kbd>R</kbd> random seed<br/>
+      Tap the board to regenerate.<span class="kbds"> Or press <kbd>Space</kbd> / <kbd>R</kbd>.</span><br/>
       Red numbers (6 &amp; 8) are the most likely rolls.
     </div>
   </aside>
@@ -602,6 +624,7 @@ function exportPng() {
 
 /* ---------- wiring ---------- */
 document.getElementById("regen").addEventListener("click", () => regenerate(true));
+document.getElementById("board").addEventListener("click", () => regenerate(true));
 document.getElementById("exportPng").addEventListener("click", exportPng);
 document.getElementById("copyLink").addEventListener("click", () => {
   navigator.clipboard.writeText(location.href).then(() => {

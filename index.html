@@ -110,7 +110,7 @@
   }
   #board {
     width: 100%; height: 100%; cursor: grab;
-    transform-origin: 0 0; touch-action: none; will-change: transform;
+    transform-origin: 0 0; touch-action: none;
   }
   #board:active { cursor: grabbing; }
   #board svg { width: 100%; height: 100%; display: block; }
@@ -249,7 +249,7 @@
     </div>
 
     <div class="hint">
-      Tap the board to regenerate.<span class="kbds"> Or press <kbd>Space</kbd> / <kbd>R</kbd>.</span><br/>
+      Drag to pan · pinch or scroll to zoom.<span class="kbds"> Press <kbd>Space</kbd> / <kbd>R</kbd> to regenerate.</span><br/>
       Red numbers (6 &amp; 8) are the most likely rolls.
     </div>
   </aside>
@@ -286,7 +286,7 @@ const RESOURCES = {
   brick: { color: "#bd5b3c", label: "Brick", icon: "🧱" },
   sheep: { color: "#8ec64a", label: "Sheep", icon: "🐑" },
   wheat: { color: "#e7b22b", label: "Wheat", icon: "🌾" },
-  ore:   { color: "#7d8a99", label: "Ore",   icon: "⛰" },
+  ore:   { color: "#7d8a99", label: "Ore",   icon: "⛰️" },
   desert:{ color: "#d9c08a", label: "Desert",icon: "🌵" },
 };
 
@@ -496,8 +496,8 @@ function render(map, opts) {
     xmlns: NS, "font-family": "Segoe UI, system-ui, sans-serif",
   });
 
-  // sea background (so PNG export has the ocean too)
-  el("rect", { x: vbX, y: vbY, width: vbW, height: vbH, fill: "#1b6ca8" }, svg);
+  // (no sea rect here — the page's gradient shows through so there's no seam;
+  //  the ocean is painted onto the canvas at PNG-export time instead)
 
   // ports first (drawn under tiles' overlap region but above sea)
   const portLayer = el("g", {}, svg);
@@ -516,26 +516,29 @@ function render(map, opts) {
     }, g);
     // subtle top highlight
     el("polygon", { points: pts, fill: "url(#hexShade)" }, g);
-    // resource icon (faint, centered top)
-    const ico = el("text", {
-      x: c.x, y: c.y - 14, "text-anchor": "middle", "font-size": 26,
-      opacity: res === "desert" ? 0.85 : 0.5,
-    }, g);
+    // resource icon (clear, with a soft shadow for legibility)
+    // desert has no number token, so its cactus is centred in the hex
+    const isDesert = res === "desert";
+    const icoAttrs = {
+      x: c.x, y: isDesert ? c.y : c.y - 15, "text-anchor": "middle",
+      "font-size": isDesert ? 34 : 32,
+      opacity: isDesert ? 1 : 0.95, filter: "url(#iconShadow)",
+    };
+    if (isDesert) icoAttrs["dominant-baseline"] = "central";
+    const ico = el("text", icoAttrs, g);
     ico.textContent = def.icon;
 
     if (map.numbers[i] != null) drawToken(g, c.x, c.y + 14, map.numbers[i]);
-    if (res === "desert") {
-      const rob = el("text", { x: c.x, y: c.y + 22, "text-anchor": "middle", "font-size": 22 }, g);
-      rob.textContent = "🤖";
-    }
   });
 
-  // gradient defs
+  // gradient + filter defs
   const defs = el("defs", {}, svg);
   const grad = el("linearGradient", { id: "hexShade", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
   el("stop", { offset: 0, "stop-color": "#ffffff", "stop-opacity": 0.18 }, grad);
   el("stop", { offset: 0.5, "stop-color": "#ffffff", "stop-opacity": 0 }, grad);
   el("stop", { offset: 1, "stop-color": "#000000", "stop-opacity": 0.12 }, grad);
+  const sh = el("filter", { id: "iconShadow", x: "-40%", y: "-40%", width: "180%", height: "180%" }, defs);
+  el("feDropShadow", { dx: 0, dy: 1, stdDeviation: 1.1, "flood-color": "#000000", "flood-opacity": 0.5 }, sh);
 
   const host = document.getElementById("board");
   host.innerHTML = "";
@@ -650,6 +653,7 @@ function regenerate(newSeed = true) {
   const o = readOpts();
   if (newSeed) o.seed = Math.floor(Math.random() * 1e9);
   run(o);
+  document.body.classList.remove("drawer-open");  // close the phone settings sheet so the map shows
 }
 
 /* ---------- PNG export ---------- */
@@ -667,6 +671,15 @@ function exportPng() {
     canvas.height = vb.height * scale;
     const ctx = canvas.getContext("2d");
     ctx.scale(scale, scale);
+    // paint the ocean (matches the on-screen radial gradient)
+    const sea = ctx.createRadialGradient(
+      vb.width * 0.5, vb.height * 0.4, 0,
+      vb.width * 0.5, vb.height * 0.4, Math.max(vb.width, vb.height) * 0.75);
+    sea.addColorStop(0, "#1f7bb6");
+    sea.addColorStop(0.45, "#1b6ca8");
+    sea.addColorStop(1, "#14507c");
+    ctx.fillStyle = sea;
+    ctx.fillRect(0, 0, vb.width, vb.height);
     ctx.drawImage(img, 0, 0, vb.width, vb.height);
     canvas.toBlob(b => {
       const a = document.createElement("a");
@@ -690,7 +703,7 @@ document.getElementById("regen").addEventListener("click", () => regenerate(true
 const ZOOM = (function () {
   const board = document.getElementById("board");
   const stage = board.parentElement;
-  const MIN = 1, MAX = 6, TAP_MOVE = 8, MOBILE_INIT = 1.18;
+  const MIN = 1, MAX = 6, TAP_MOVE = 8, MOBILE_INIT = 1.0;
   let scale = 1, tx = 0, ty = 0;
   const pts = new Map();
   let pinch = null, pan = null, gestureMoved = false;
@@ -756,9 +769,7 @@ const ZOOM = (function () {
       pan = { x0: p.x, y0: p.y, tx0: tx, ty0: ty };
       pinch = null;
     } else if (pts.size === 0) {
-      const wasTap = !gestureMoved;
-      pinch = null; pan = null;
-      if (wasTap) regenerate(true);
+      pinch = null; pan = null;   // a plain tap does nothing — use the Generate button
     }
   }
   board.addEventListener("pointerup", up);

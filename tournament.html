@@ -207,6 +207,7 @@
 /* ---------------- constants ---------------- */
 const LS_V2 = "catannis_tournament_v2";
 const LS_V1 = "catannis_tournament_v1";
+const LS_HIST = "catannis_history_v1";   // finished tournaments — survives wipe()
 const MAX_VP = 10;                      // Catan games end at 10 victory points
 const PLACEMENT = {                     // points by finishing position, per table size
   3: [5, 3, 1],
@@ -225,6 +226,7 @@ const SEMI_PLANS = { 8: 2, 12: 3, 16: 4 };   // playoff size -> number of semifi
 let T = null;                 // active tournament, or null on the setup screen
 let moveSel = null;           // move mode: { pid: selected player id or null }
 let drafts = {};              // unsaved VP entries, keyed "stage:pid" — survives re-renders
+let histView = null;          // past tournament being viewed read-only, or null
 const ui = { bracket: false, players: false, map: false };
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -244,6 +246,21 @@ function load() {
   } catch { return null; }
 }
 function wipe() { localStorage.removeItem(LS_V2); localStorage.removeItem(LS_V1); T = null; drafts = {}; moveSel = null; }
+
+/* past-tournament history (kept separately, never wiped with the active tournament) */
+function loadHistory() { try { return JSON.parse(localStorage.getItem(LS_HIST)) || []; } catch { return []; } }
+function saveHistory(h) { localStorage.setItem(LS_HIST, JSON.stringify(h)); }
+function archiveTournament() {
+  const ordered = T.final.results.slice().sort((a, b) => a.rank - b.rank || b.vp - a.vp);
+  const hist = loadHistory();
+  hist.unshift({
+    id: uid(), date: new Date().toISOString(),
+    name: T.name, players: T.players.length,
+    champion: nameOf(ordered[0].id),
+    t: T,                                  // full snapshot so the bracket stays viewable
+  });
+  saveHistory(hist);
+}
 
 /* one-time upgrade of an in-flight v1 tournament (per-table maps -> per-round map) */
 function migrateV1(old) {
@@ -466,6 +483,7 @@ function buildFinalFromSemis() {
 const view = document.getElementById("view");
 function render() {
   document.title = T ? `${T.name} — Catannis Tournament` : "Catannis — Tournament";
+  if (histView) return renderHistoryView();
   if (!T) return renderSetup();
   if (ui.bracket) return renderBracket();
   if (T.status === "round") return renderRun();
@@ -557,6 +575,7 @@ function renderSetup() {
     <div class="btnbar">
       <button class="btn-primary" id="startBtn">Start tournament →</button>
     </div>
+    ${historyCardHTML()}
   `;
 
   if (resume) {
@@ -679,6 +698,29 @@ function renderSetup() {
     T.rounds.push(pairRound(T.players.map(p => p.id), T.seatPlan, []));
     drafts = {}; save(); render();
   };
+
+  view.querySelectorAll("[data-histview]").forEach(b => b.onclick = () => {
+    histView = loadHistory().find(h => h.id === b.dataset.histview) || null; render();
+  });
+  view.querySelectorAll("[data-histdel]").forEach(b => b.onclick = () => {
+    if (!confirm("Delete this past tournament from the history?")) return;
+    saveHistory(loadHistory().filter(h => h.id !== b.dataset.histdel)); render();
+  });
+}
+
+function historyCardHTML() {
+  const hist = loadHistory();
+  if (!hist.length) return "";
+  return `<h2>Past champions</h2>
+    <div class="card">
+      ${hist.map(h => `
+        <div class="pmrow">
+          <span class="pname">👑 <b>${esc(h.champion)}</b> — ${esc(h.name)}
+            <span class="muted" style="font-size:12px">· ${new Date(h.date).toLocaleDateString()} · ${h.players} players</span></span>
+          <button class="btn btn-sm" data-histview="${h.id}">View</button>
+          <button class="btn btn-sm btn-danger" data-histdel="${h.id}">✕</button>
+        </div>`).join("")}
+    </div>`;
 }
 
 /* ---------- shared pieces ---------- */
@@ -710,6 +752,8 @@ function wireMapPanel(onReroll) {
 function vpListHTML(items, stageKey, movable) {
   return `<div class="vplist" data-stage="${stageKey}">
     ${items.map(it => {
+      if (it.grow) return `<div class="vprow empty movable" data-grow="${it.t}">
+        <span class="posbadge">＋</span><span class="pname">add a seat here (${it.seats} → ${it.seats + 1}) — tap to sit down</span></div>`;
       if (it.empty) return `<div class="vprow empty ${movable ? "movable" : ""}" data-slot="${it.t}">
         <span class="posbadge">·</span><span class="pname">empty seat${movable ? " — tap to move here" : ""}</span></div>`;
       const val = drafts[stageKey + ":" + it.pid] ?? "";
@@ -820,7 +864,7 @@ function playersPanelHTML() {
       <button class="btn" id="addPlayerBtn">＋ Add</button>
     </div>
     <p class="hint" style="margin:.7em 0 0">
-      New players land on the bench${inRound ? " for this round — use <b>Move players</b> to seat them, or <b>Re-pair</b> before play starts" : ""}.
+      New players land on the bench${inRound ? " for this round — use <b>Move players</b> to seat them (you can add a seat to turn a 3-player table into 4), or <b>Re-pair</b> before play starts" : ""}.
       Dropped players keep their points but sit out future rounds.</p>
   </div>`;
 }
@@ -899,6 +943,21 @@ function wireMoveMode(r) {
       moveSel = { pid: null }; save(); render();
     };
   });
+  view.querySelectorAll("[data-grow]").forEach(el => {      // add a seat to a full table and sit there
+    el.onclick = () => {
+      if (!moveSel.pid) return;
+      const t = +el.dataset.grow;
+      const A = locate(moveSel.pid);
+      if (!A) return;
+      if (A.kind === "table" && A.t === t) { moveSel = { pid: null }; render(); return; }  // already at this table
+      if (A.kind === "table") r.tables[A.t].players.splice(A.i, 1); else r.byes.splice(A.i, 1);
+      r.tables[t].seats++;
+      if (T.seatPlan[t] != null && T.seatPlan[t] < r.tables[t].seats)
+        T.seatPlan[t] = r.tables[t].seats;                  // later rounds keep the bigger table
+      r.tables[t].players.push(moveSel.pid);
+      moveSel = { pid: null }; save(); render();
+    };
+  });
   const bench = view.querySelector("[data-benchzone]");     // send the selected player to the bench
   if (bench) bench.onclick = e => {
     if (!moveSel.pid || e.target.closest("[data-pid]")) return;
@@ -938,6 +997,9 @@ function renderRun() {
     } else {
       const items = tb.players.map(id => ({ pid: id, name: nameOf(id) }));
       for (let k = tb.players.length; k < tb.seats; k++) items.push({ empty: true, t: ti });
+      const seatCap = T.mapCfg.expansion ? 6 : 4;      // the shared map limits table size
+      if (moveSel && moveSel.pid && tb.players.length >= tb.seats && tb.seats < seatCap)
+        items.push({ grow: true, t: ti, seats: tb.seats });
       body = vpListHTML(items, `r${T.roundIndex}:${ti}`, !!moveSel);
       action = moveSel ? "" :
         `<div class="hint" style="margin:2px 0 8px">Type each player's VP (max ${MAX_VP}) — places are worked out automatically.</div>
@@ -961,7 +1023,7 @@ function renderRun() {
     ${ui.players ? playersPanelHTML() : ""}
     ${mapPanelHTML(T.mapCfg, r.seed, !anyDone)}
     ${moveSel ? `<p class="hint" style="margin:0 0 10px">${moveSel.pid
-      ? `<b>${esc(nameOf(moveSel.pid))}</b> selected — tap another player to swap, an empty seat to move, or the bench.`
+      ? `<b>${esc(nameOf(moveSel.pid))}</b> selected — tap another player to swap, an empty seat or "＋ add a seat" to move, or the bench.`
       : "Tap a player to pick them up."}</p>` : ""}
     ${benchHTML(r)}
     ${tablesHTML}
@@ -1167,19 +1229,25 @@ function renderDone() {
     <div class="card">${standingsTable(T.playoff.cut, false)}</div>
 
     <div class="btnbar">
-      <button class="btn-primary" id="newBtn">New tournament</button>
+      <button class="btn-primary" id="saveFinishBtn">💾 Save &amp; finish</button>
+      <button class="btn btn-danger" id="discardBtn2">Discard tournament</button>
     </div>
+    <p class="hint" style="margin-top:8px">Save &amp; finish stores this night under <b>Past champions</b> on the start
+      screen — champion, bracket and standings stay viewable — then clears the board for the next tournament.</p>
   `;
   view.querySelector("#bracketBtn").onclick = () => { ui.bracket = true; render(); };
   view.querySelector("#editFinal").onclick = () => {
     prefillDrafts("f:0", f.results);
     f.done = false; f.results = null; T.status = "final"; save(); render();
   };
-  view.querySelector("#newBtn").onclick = () => { if (confirm("Clear this tournament and start a new one?")) { wipe(); render(); } };
+  view.querySelector("#saveFinishBtn").onclick = () => { archiveTournament(); wipe(); render(); };
+  view.querySelector("#discardBtn2").onclick = () => {
+    if (confirm("Discard without saving to the history?")) { wipe(); render(); }
+  };
 }
 
 /* ---------- bracket ---------- */
-function renderBracket() {
+function bracketHTML() {
   const cut = T.playoff.cut;
   const seeds = T.playoffSeeds || activeSeedIds().slice(0, cut);
   const live = !T.playoffSeeds;
@@ -1228,14 +1296,7 @@ function renderBracket() {
       T.playoff.kind === "semis" ? "Winners of the semifinals" : "Top " + cut + " after qualifying"}</span></div>`;
   }
 
-  view.innerHTML = `
-    <div class="roundbar">
-      <span class="title">🏆 Playoff bracket</span>
-      <span class="pill">${esc(T.name)}</span>
-    </div>
-    <div class="navpills"><button class="btn btn-sm" id="backBtn">← Back</button></div>
-    ${live ? `<p class="hint" style="margin:0 0 8px">Seeds show the <b>current</b> top ${cut} — they lock in when qualifying ends.</p>` : ""}
-    <div class="bracketscroll"><div class="bracket">
+  return `<div class="bracketscroll"><div class="bracket">
       <div class="bcol"><h4>Qualifying${live ? " (live)" : ""}</h4><div class="bbox"><div class="bt">Top ${cut} seeds</div>${seedRows}</div></div>
       ${semiCols}
       <div class="bjoin">›</div>
@@ -1243,9 +1304,54 @@ function renderBracket() {
       <div class="bjoin">›</div>
       <div class="bcol"><h4>Champion</h4><div class="bbox bchamp">👑<div class="who">${
         champId ? esc(nameOf(champId)) : "TBD"}</div></div></div>
-    </div></div>
+    </div></div>`;
+}
+
+function renderBracket() {
+  const live = !T.playoffSeeds;
+  view.innerHTML = `
+    <div class="roundbar">
+      <span class="title">🏆 Playoff bracket</span>
+      <span class="pill">${esc(T.name)}</span>
+    </div>
+    <div class="navpills"><button class="btn btn-sm" id="backBtn">← Back</button></div>
+    ${live ? `<p class="hint" style="margin:0 0 8px">Seeds show the <b>current</b> top ${T.playoff.cut} — they lock in when qualifying ends.</p>` : ""}
+    ${bracketHTML()}
   `;
   view.querySelector("#backBtn").onclick = () => { ui.bracket = false; render(); };
+}
+
+/* ---------- read-only view of a saved past tournament ---------- */
+function renderHistoryView() {
+  const hv = histView;
+  const prevT = T;
+  let html;
+  try {
+    T = hv.t;                       // borrow the render helpers against the snapshot
+    const ordered = T.final.results.slice().sort((a, b) => a.rank - b.rank || b.vp - a.vp);
+    const champ = nameOf(ordered[0].id);
+    const p2 = ordered[1] ? nameOf(ordered[1].id) : "";
+    const p3 = ordered[2] ? nameOf(ordered[2].id) : "";
+    html = `
+      <div class="roundbar"><span class="title">🏆 ${esc(T.name)}</span>
+        <span class="pill">${new Date(hv.date).toLocaleDateString()}</span>
+        <span class="pill">${T.players.length} players</span></div>
+      <div class="navpills"><button class="btn btn-sm" id="histBack">← Back</button></div>
+      <div class="champ">👑 ${esc(champ)}</div>
+      <div class="podium">
+        ${p2 ? `<div class="p p2"><div class="bar">2</div><div class="who">${esc(p2)}</div></div>` : ""}
+        <div class="p p1"><div class="bar">1</div><div class="who">${esc(champ)}</div></div>
+        ${p3 ? `<div class="p p3"><div class="bar">3</div><div class="who">${esc(p3)}</div></div>` : ""}
+      </div>
+      ${bracketHTML()}
+      <h2>Final table result</h2>
+      <div class="card">${doneRowsHTML(T.final.results, true)}</div>
+      <h2>Qualifying standings</h2>
+      <div class="card">${standingsTable(T.playoff.cut, false)}</div>
+    `;
+  } finally { T = prevT; }
+  view.innerHTML = html;
+  view.querySelector("#histBack").onclick = () => { histView = null; render(); };
 }
 
 /* ---------- shared: standings table ---------- */

@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Catannis — Tournament</title>
+<style>
+  :root {
+    --bg: #0f1f2e; --panel: #16293b; --panel-2: #1d3346; --line: #2c455c;
+    --text: #e8eef4; --muted: #8fa6bb; --accent: #ffb347; --accent-2: #4aa3df;
+    --good: #6ac47a; --bad: #e0664f; --gold: #ffcf5c;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  a { color: var(--accent-2); }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 18px 16px 80px; }
+
+  header.top {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
+  }
+  .brand { font-size: 22px; font-weight: 800; margin: 0; }
+  .brand span { color: var(--accent); }
+  .top .spacer { flex: 1; }
+  .pill {
+    font-size: 12px; color: var(--muted); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 20px; padding: 4px 12px;
+  }
+
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+       margin: 22px 0 10px; font-weight: 700; }
+  h3 { margin: 0 0 8px; font-size: 16px; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+          padding: 16px; margin-bottom: 14px; }
+  label.field { display: block; font-size: 13px; color: var(--muted); margin: 0 0 4px; font-weight: 600; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%; padding: 10px 11px; font-size: 16px; font-family: inherit;   /* 16px avoids iOS zoom-on-focus */
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; color: var(--text);
+  }
+  textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent-2); }
+  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 90px; }
+
+  button { font-family: inherit; font-weight: 700; cursor: pointer; border: none; border-radius: 8px;
+           transition: filter .15s, transform .05s; }
+  button:active { transform: translateY(1px); }
+  .btn { padding: 11px 16px; font-size: 14px; background: var(--panel-2); color: var(--text);
+         border: 1px solid var(--line); }
+  .btn:hover { border-color: var(--accent-2); }
+  .btn-primary { padding: 13px 18px; font-size: 15px; color: #2a1a00;
+                 background: linear-gradient(135deg, var(--accent), #ff9838); }
+  .btn-primary:hover { filter: brightness(1.05); }
+  .btn-sm { padding: 7px 11px; font-size: 12px; }
+  .btn-danger { background: transparent; border: 1px solid var(--line); color: var(--bad); }
+  .btnbar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+
+  .chk { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600;
+         background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+         padding: 8px 11px; cursor: pointer; user-select: none; }
+  .chk input { width: 15px; height: 15px; accent-color: var(--accent); }
+
+  .tables-tmpl .trow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .tables-tmpl .trow .tname { font-weight: 700; min-width: 66px; }
+  .stepper { display: inline-flex; align-items: center; gap: 0; }
+  .stepper button { width: 38px; height: 38px; font-size: 18px; background: var(--panel); border: 1px solid var(--line); color: var(--text); }
+  .stepper .val { min-width: 34px; text-align: center; font-weight: 700; font-size: 16px; }
+
+  .seatinfo { font-size: 13px; margin-top: 6px; }
+  .seatinfo.ok { color: var(--good); }
+  .seatinfo.bad { color: var(--bad); }
+
+  /* run view */
+  .roundbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .roundbar .title { font-size: 18px; font-weight: 800; }
+  .table-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .table-card.done { border-color: #35604a; }
+  .table-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .table-head .tt { font-size: 16px; font-weight: 800; }
+  .tag { font-size: 11px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line);
+         border-radius: 20px; padding: 2px 9px; }
+  .tag.exp { color: var(--gold); }
+
+  .seat { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); }
+  .seat:first-of-type { border-top: none; }
+  .seat .pname { flex: 1; font-weight: 600; }
+  .seat.selectable .pname { cursor: pointer; }
+  .seat.sel { background: rgba(74,163,223,.14); border-radius: 6px; }
+  .seat select, .seat input { width: auto; }
+  .seat select { width: 62px; padding: 6px; }
+  .seat input.vp { width: 62px; padding: 6px; text-align: center; }
+  .rankbadge { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center;
+    justify-content: center; font-weight: 800; font-size: 13px; background: var(--panel-2); border: 1px solid var(--line); }
+  .rankbadge.r1 { background: var(--gold); color: #3a2c00; border-color: var(--gold); }
+  .rankbadge.r2 { background: #c9d2da; color: #22303a; }
+  .rankbadge.r3 { background: #cd8b5b; color: #2a1600; }
+
+  /* drag-to-reorder finishing list */
+  .sortlist { margin: 2px 0 4px; }
+  .sortrow { display: flex; align-items: center; gap: 8px; padding: 9px 8px; margin-bottom: 6px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; }
+  .sortrow.dragging { border-color: var(--accent-2); box-shadow: 0 8px 20px rgba(0,0,0,.45); }
+  .grip { cursor: grab; touch-action: none; color: var(--muted); font-size: 18px;
+    line-height: 1; padding: 2px 4px; user-select: none; -webkit-user-select: none; }
+  .grip:active { cursor: grabbing; }
+  .posbadge { width: 30px; text-align: center; font-weight: 800; font-size: 13px; color: var(--muted); }
+  .posbadge.r1 { color: var(--gold); } .posbadge.r2 { color: #c9d2da; } .posbadge.r3 { color: #cd8b5b; }
+  .sortrow .pname { flex: 1; font-weight: 600; }
+  .sortrow input.vp { width: 64px; padding: 6px; text-align: center; }
+
+  /* standings */
+  .tablescroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.stand { width: 100%; min-width: 320px; border-collapse: collapse; font-size: 14px; }
+  table.stand th, table.stand td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  table.stand th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  table.stand td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.stand tr.cut td { background: rgba(106,196,122,.10); }
+  table.stand tr.cutline td { border-bottom: 2px dashed var(--good); }
+  .rankcell { font-weight: 800; color: var(--muted); }
+
+  .podium { display: flex; justify-content: center; align-items: flex-end; gap: 12px; margin: 20px 0; }
+  .podium .p { text-align: center; }
+  .podium .bar { border-radius: 8px 8px 0 0; width: 84px; display: flex; align-items: flex-start;
+    justify-content: center; padding-top: 8px; font-weight: 800; color: #22303a; }
+  .podium .p1 .bar { height: 120px; background: var(--gold); }
+  .podium .p2 .bar { height: 88px; background: #c9d2da; }
+  .podium .p3 .bar { height: 64px; background: #cd8b5b; }
+  .podium .who { margin-top: 6px; font-weight: 700; }
+
+  .muted { color: var(--muted); }
+  .hint { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .center { text-align: center; }
+  .champ { font-size: 26px; font-weight: 800; color: var(--gold); text-align: center; margin: 10px 0; }
+
+  /* ---- phone ---- */
+  @media (max-width: 560px) {
+    .wrap { padding: 14px 12px 96px; }
+    .brand { font-size: 18px; }
+    .card { padding: 13px; }
+    h2 { margin: 18px 0 8px; }
+    .btnbar { flex-direction: column; }
+    .btnbar > .btn, .btnbar > .btn-primary { width: 100%; }
+    .roundbar .title { font-size: 17px; }
+    .grip { font-size: 22px; padding: 8px 10px; }        /* bigger drag target */
+    .sortrow { padding: 11px 8px; }
+    .sortrow input.vp { width: 74px; }
+    table.stand th, table.stand td { padding: 7px 8px; }
+    .table-head .btn-sm { padding: 8px 12px; }           /* easier "Show map" tap */
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="brand">Cat<span>annis</span> · Tournament</h1>
+    <span class="spacer"></span>
+    <a class="pill" href="index.html">← Map generator</a>
+  </header>
+  <div id="view"></div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------------- constants ---------------- */
+const LS_KEY = "catannis_tournament_v1";
+const PLACEMENT = {            // points by finishing position, per table size
+  3: [5, 3, 1],
+  4: [5, 4, 2, 1],
+  5: [6, 4, 3, 2, 1],
+  6: [7, 5, 4, 3, 2, 1],
+};
+function placementPoints(size, rank) {
+  const t = PLACEMENT[size];
+  if (t) return t[rank - 1] ?? 0;
+  return Math.max(0, size - rank + 1);          // fallback for unusual sizes
+}
+
+/* ---------------- state ---------------- */
+let T = null;          // active tournament, or null while on the setup screen
+let swapSel = null;    // {round, table, seat} currently selected for a manual swap
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const uid = () => Math.random().toString(36).slice(2, 9);
+const seed = () => Math.floor(Math.random() * 1e9);
+
+function save() { if (T) localStorage.setItem(LS_KEY, JSON.stringify(T)); }
+function load() { try { return JSON.parse(localStorage.getItem(LS_KEY)); } catch { return null; } }
+function wipe() { localStorage.removeItem(LS_KEY); T = null; }
+
+/* map-generator URL for a table's board */
+function mapURL(cfg) {
+  return `index.html#seed=${cfg.seed}&exp=${cfg.expansion ? 1 : 0}` +
+    `&ports=${cfg.ports ? 1 : 0}&rand=${cfg.balanced ? 0 : 1}&nsr=0`;
+}
+
+/* ---------------- pairing ---------------- */
+// Build a table assignment for a round, minimising repeat opponents.
+function pairRound(players, template, priorRounds) {
+  const ids = players.map(p => p.id);
+  const sizes = template.map(t => t.seats);
+  let totalSeats = sizes.reduce((a, b) => a + b, 0);
+
+  // how many byes this round (players who sit out)
+  const byeCount = Math.max(0, ids.length - totalSeats);
+
+  // count prior byes so we spread them fairly
+  const byeHist = {}; ids.forEach(i => byeHist[i] = 0);
+  priorRounds.forEach(r => (r.byes || []).forEach(i => byeHist[i]++));
+
+  // pair-history: how often each pair has shared a table
+  const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+  const seen = {};
+  priorRounds.forEach(r => r.tables.forEach(tb => {
+    for (let i = 0; i < tb.players.length; i++)
+      for (let j = i + 1; j < tb.players.length; j++)
+        seen[pairKey(tb.players[i], tb.players[j])] = (seen[pairKey(tb.players[i], tb.players[j])] || 0) + 1;
+  }));
+
+  function attempt() {
+    // choose byes: players with the fewest prior byes, ties random
+    let pool = shuffle(ids.slice());
+    pool.sort((a, b) => byeHist[a] - byeHist[b]);      // fewest prior byes first
+    const byes = pool.slice(0, byeCount);              // they take the bye (evens byes out over the night)
+    const seated = shuffle(pool.slice(byeCount));
+    const tbls = sizes.map(() => []);
+    // greedily place each player into the table (with a free seat) where they've met the fewest opponents
+    for (const p of seated) {
+      let best = -1, bestCost = Infinity;
+      for (let t = 0; t < tbls.length; t++) {
+        if (tbls[t].length >= sizes[t]) continue;
+        let cost = 0;
+        for (const q of tbls[t]) cost += (seen[pairKey(p, q)] || 0) * 10 + 0;
+        cost += tbls[t].length * 0.01;                 // mild balancing
+        if (cost < bestCost) { bestCost = cost; best = t; }
+      }
+      tbls[best].push(p);
+    }
+    return { tbls, byes };
+  }
+
+  // repeat cost helpers + local search (swap players between tables to cut repeats)
+  const tableRepeat = tb => {
+    let c = 0;
+    for (let i = 0; i < tb.length; i++)
+      for (let j = i + 1; j < tb.length; j++)
+        c += seen[pairKey(tb[i], tb[j])] || 0;
+    return c;
+  };
+  const totalRepeats = tbls => tbls.reduce((s, tb) => s + tableRepeat(tb), 0);
+  function hillClimb(tbls) {
+    let improved = true, guard = 400;
+    while (improved && guard-- > 0) {
+      improved = false;
+      for (let a = 0; a < tbls.length; a++)
+        for (let b = a + 1; b < tbls.length; b++)
+          for (let i = 0; i < tbls[a].length; i++)
+            for (let j = 0; j < tbls[b].length; j++) {
+              const before = tableRepeat(tbls[a]) + tableRepeat(tbls[b]);
+              [tbls[a][i], tbls[b][j]] = [tbls[b][j], tbls[a][i]];
+              if (tableRepeat(tbls[a]) + tableRepeat(tbls[b]) < before) improved = true;
+              else [tbls[a][i], tbls[b][j]] = [tbls[b][j], tbls[a][i]];   // revert
+            }
+    }
+  }
+
+  let best = null;
+  for (let k = 0; k < 120; k++) {
+    const a = attempt();
+    hillClimb(a.tbls);
+    const rep = totalRepeats(a.tbls);
+    if (!best || rep < best.repeats) best = { tbls: a.tbls, byes: a.byes, repeats: rep };
+    if (best.repeats === 0) break;
+  }
+
+  const tables = template.map((tmpl, i) => ({
+    players: best.tbls[i],
+    config: { expansion: tmpl.expansion, ports: tmpl.ports, balanced: tmpl.balanced, seed: seed() },
+    seats: tmpl.seats,
+    results: null,
+    done: false,
+  }));
+  return { tables, byes: best.byes };
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+/* ---------------- standings ---------------- */
+function computeStandings() {
+  const s = {};
+  T.players.forEach(p => s[p.id] = { id: p.id, name: p.name, pts: 0, vp: 0, wins: 0, seconds: 0, thirds: 0, games: 0, byes: 0 });
+  T.rounds.forEach(r => {
+    (r.byes || []).forEach(id => { if (s[id]) s[id].byes++; });
+    r.tables.forEach(tb => {
+      if (!tb.done || !tb.results) return;
+      const size = tb.results.length;
+      tb.results.forEach(res => {
+        const row = s[res.id]; if (!row) return;
+        row.pts += placementPoints(size, res.rank);
+        row.vp += (res.vp || 0);
+        row.games++;
+        if (res.rank === 1) row.wins++;
+        else if (res.rank === 2) row.seconds++;
+        else if (res.rank === 3) row.thirds++;
+      });
+    });
+  });
+  return Object.values(s).sort((a, b) =>
+    b.pts - a.pts || b.vp - a.vp || b.wins - a.wins || b.seconds - a.seconds || b.thirds - a.thirds);
+}
+
+function allTablesDone(round) { return round.tables.every(t => t.done); }
+
+/* ================= RENDER ================= */
+const view = document.getElementById("view");
+function render() {
+  if (!T) return renderSetup();
+  if (T.status === "round") return renderRun();
+  if (T.status === "final") return renderFinal();
+  if (T.status === "done") return renderDone();
+}
+
+/* ---------- setup ---------- */
+function renderSetup() {
+  const resume = load();
+  view.innerHTML = `
+    ${resume ? `<div class="card" style="border-color:var(--accent-2)">
+      <h3>Resume tournament</h3>
+      <p class="muted" style="margin:.3em 0 .8em">"${esc(resume.name || "Untitled")}" — ${resume.players.length} players, ${
+        resume.status === "done" ? "finished" : resume.status === "final" ? "at the final" : "round " + (resume.roundIndex + 1)}.</p>
+      <div class="btnbar">
+        <button class="btn-primary" id="resumeBtn">Resume</button>
+        <button class="btn btn-danger" id="discardBtn">Discard &amp; start new</button>
+      </div>
+    </div>` : ""}
+
+    <h2>New tournament</h2>
+    <div class="card">
+      <label class="field">Tournament name</label>
+      <input type="text" id="tName" placeholder="e.g. Friday Night Catan" />
+
+      <label class="field" style="margin-top:14px">Players — one name per line</label>
+      <textarea id="tPlayers" placeholder="Alex&#10;Sam&#10;Jordan&#10;…"></textarea>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:0 0 auto">
+          <label class="field">Quick fill</label>
+          <input type="number" id="fillN" min="2" max="60" value="12" style="width:90px" />
+        </div>
+        <div style="flex:0 0 auto"><button class="btn btn-sm" id="fillBtn">Fill Player 1…N</button></div>
+        <div style="flex:1"></div>
+        <div style="flex:0 0 auto" class="hint" id="playerCount"></div>
+      </div>
+    </div>
+
+    <h2>Format</h2>
+    <div class="card">
+      <div class="row">
+        <div>
+          <label class="field">Qualifying rounds</label>
+          <input type="number" id="tRounds" min="1" max="10" value="2" />
+        </div>
+        <div>
+          <label class="field">Advance to final (top…)</label>
+          <input type="number" id="tCut" min="2" max="6" value="4" />
+        </div>
+        <div>
+          <label class="field">Tables per round</label>
+          <input type="number" id="tCount" min="1" max="12" value="3" />
+        </div>
+      </div>
+
+      <label class="field" style="margin-top:16px">Each table's setup</label>
+      <div class="tables-tmpl" id="tmpl"></div>
+      <div class="seatinfo" id="seatInfo"></div>
+    </div>
+
+    <h2>Final table</h2>
+    <div class="card">
+      <div class="btnbar">
+        <label class="chk"><input type="checkbox" id="fExp"> Expansion (5–6)</label>
+        <label class="chk"><input type="checkbox" id="fPorts" checked> Ports</label>
+        <label class="chk"><input type="checkbox" id="fBal" checked> Balanced numbers</label>
+      </div>
+      <p class="hint" style="margin:.7em 0 0">Scoring: placement points (4-player 5·4·2·1, 3-player 5·3·1) summed across games, victory points break ties. Top ${""} players advance to a single final.</p>
+    </div>
+
+    <div class="btnbar">
+      <button class="btn-primary" id="startBtn">Start tournament →</button>
+    </div>
+  `;
+
+  // resume / discard
+  if (resume) {
+    view.querySelector("#resumeBtn").onclick = () => { T = resume; render(); };
+    view.querySelector("#discardBtn").onclick = () => { wipe(); render(); };
+  }
+
+  const $ = id => view.querySelector(id);
+  const playersEl = $("#tPlayers"), countEl = $("#playerCount");
+  const parsePlayers = () => playersEl.value.split("\n").map(s => s.trim()).filter(Boolean);
+  const updateCount = () => { countEl.textContent = parsePlayers().length + " players"; renderTmpl(); };
+  playersEl.addEventListener("input", updateCount);
+
+  $("#fillBtn").onclick = () => {
+    const n = Math.max(2, Math.min(60, +$("#fillN").value || 0));
+    playersEl.value = Array.from({ length: n }, (_, i) => "Player " + (i + 1)).join("\n");
+    updateCount();
+  };
+
+  // per-table template rows
+  let tmpl = [];
+  function syncTmplLength() {
+    const n = Math.max(1, Math.min(12, +$("#tCount").value || 1));
+    while (tmpl.length < n) tmpl.push({ seats: 4, expansion: false, ports: true, balanced: true });
+    tmpl.length = n;
+  }
+  function autoSeats() {
+    // distribute players across tables (base 4, expansion up to 6)
+    const players = parsePlayers().length;
+    if (!players) return;
+    let remaining = players;
+    // give expansion tables up to 6, others 4, then balance leftovers
+    tmpl.forEach(t => { t.seats = t.expansion ? 5 : 4; });
+    let sum = tmpl.reduce((a, t) => a + t.seats, 0);
+    // nudge seats up/down to match player count
+    let guard = 200;
+    while (sum !== players && guard-- > 0) {
+      if (sum < players) { // add a seat where possible
+        const t = tmpl.find(t => t.seats < (t.expansion ? 6 : 4));
+        if (!t) break; t.seats++; sum++;
+      } else { // remove a seat where possible
+        const t = [...tmpl].reverse().find(t => t.seats > 3);
+        if (!t) break; t.seats--; sum--;
+      }
+    }
+  }
+  function renderTmpl() {
+    syncTmplLength();
+    const host = $("#tmpl");
+    host.innerHTML = tmpl.map((t, i) => `
+      <div class="trow" data-i="${i}">
+        <span class="tname">Table ${i + 1}</span>
+        <span class="stepper">
+          <button data-act="dec">−</button>
+          <span class="val">${t.seats}</span>
+          <button data-act="inc">+</button>
+        </span><span class="muted" style="font-size:12px">seats</span>
+        <label class="chk"><input type="checkbox" data-k="expansion" ${t.expansion ? "checked" : ""}> Exp</label>
+        <label class="chk"><input type="checkbox" data-k="ports" ${t.ports ? "checked" : ""}> Ports</label>
+        <label class="chk"><input type="checkbox" data-k="balanced" ${t.balanced ? "checked" : ""}> Bal</label>
+      </div>`).join("");
+    host.querySelectorAll(".trow").forEach(row => {
+      const i = +row.dataset.i;
+      row.querySelectorAll(".stepper button").forEach(b => b.onclick = () => {
+        const max = tmpl[i].expansion ? 6 : 4;
+        if (b.dataset.act === "inc") tmpl[i].seats = Math.min(max, tmpl[i].seats + 1);
+        else tmpl[i].seats = Math.max(3, tmpl[i].seats - 1);
+        renderTmpl(); updateSeatInfo();
+      });
+      row.querySelectorAll("input[data-k]").forEach(chk => chk.onchange = () => {
+        tmpl[i][chk.dataset.k] = chk.checked;
+        if (chk.dataset.k === "expansion" && !chk.checked && tmpl[i].seats > 4) tmpl[i].seats = 4;
+        renderTmpl(); updateSeatInfo();
+      });
+    });
+    updateSeatInfo();
+  }
+  function updateSeatInfo() {
+    const seats = tmpl.reduce((a, t) => a + t.seats, 0);
+    const players = parsePlayers().length;
+    const el = $("#seatInfo");
+    if (!players) { el.textContent = ""; return; }
+    if (seats === players) { el.className = "seatinfo ok"; el.textContent = `✓ ${seats} seats for ${players} players.`; }
+    else if (seats < players) { el.className = "seatinfo bad"; el.textContent = `${seats} seats for ${players} players — ${players - seats} will sit out each round (bye).`; }
+    else { el.className = "seatinfo bad"; el.textContent = `${seats} seats but only ${players} players — some tables won't be full.`; }
+  }
+  $("#tCount").addEventListener("input", () => renderTmpl());
+  $("#tCount").addEventListener("change", () => { autoSeats(); renderTmpl(); });
+
+  // initial
+  syncTmplLength(); autoSeats(); renderTmpl(); updateCount();
+
+  $("#startBtn").onclick = () => {
+    const names = parsePlayers();
+    if (names.length < 3) { alert("Add at least 3 players."); return; }
+    const cut = Math.max(2, Math.min(names.length, +$("#tCut").value || 4));
+    const t = {
+      name: $("#tName").value.trim() || "Catan Tournament",
+      players: names.map(n => ({ id: uid(), name: n })),
+      template: tmpl.map(t => ({ ...t })),
+      numRounds: Math.max(1, +$("#tRounds").value || 1),
+      cut,
+      finalConfig: { expansion: $("#fExp").checked, ports: $("#fPorts").checked, balanced: $("#fBal").checked },
+      rounds: [],
+      roundIndex: 0,
+      final: null,
+      status: "round",
+    };
+    T = t;
+    T.rounds.push(pairRound(T.players, T.template, []));
+    save(); render();
+  };
+}
+
+/* ---------- run (a qualifying round) ---------- */
+function renderRun() {
+  const r = T.rounds[T.roundIndex];
+  const locked = r.tables.some(t => t.done);      // once any result saved, freeze the pairing
+  const nameOf = id => (T.players.find(p => p.id === id) || {}).name || "?";
+
+  const tablesHTML = r.tables.map((tb, ti) => {
+    const cfg = tb.config;
+    const tags = `<span class="tag ${cfg.expansion ? "exp" : ""}">${cfg.expansion ? "Expansion" : "Base"}</span>` +
+      `<span class="tag">${cfg.ports ? "Ports" : "No ports"}</span>` +
+      `<span class="tag">${cfg.balanced ? "Balanced" : "Random"}</span>`;
+    let body, action;
+    if (tb.done) {
+      body = tb.players.map(id => {
+        const res = tb.results.find(x => x.id === id);
+        const rc = res.rank <= 3 ? "r" + res.rank : "";
+        return `<div class="seat"><span class="rankbadge ${rc}">${res.rank}</span>
+          <span class="pname">${esc(nameOf(id))}</span><span class="muted">${res.vp} VP</span></div>`;
+      }).join("");
+      action = `<div class="btnbar"><button class="btn btn-sm" data-edit="${ti}">Edit result</button></div>`;
+    } else if (swapSel) {
+      body = tb.players.map((id, si) => {
+        const selCls = swapSel.table === ti && swapSel.seat === si ? "sel" : "";
+        return `<div class="seat selectable ${selCls}" data-t="${ti}" data-s="${si}">
+          <span class="pname" data-swap>${esc(nameOf(id))}</span></div>`;
+      }).join("");
+      action = "";
+    } else {
+      body = sortListHTML(tb.players, nameOf, ti);
+      action = `<div class="hint" style="margin:2px 0 8px">Drag players into finishing order — 1st at top — then enter each player's VP.</div>
+        <div class="btnbar"><button class="btn-primary btn-sm" data-save="${ti}">Save result</button></div>`;
+    }
+
+    return `<div class="table-card ${tb.done ? "done" : ""}">
+      <div class="table-head">
+        <span class="tt">Table ${ti + 1}</span>${tags}
+        <span class="spacer" style="flex:1"></span>
+        <a class="btn btn-sm" href="${mapURL(cfg)}" target="_blank" rel="noopener">🗺 Show map</a>
+      </div>
+      ${body || '<p class="muted">No players.</p>'}
+      ${action}
+    </div>`;
+  }).join("");
+
+  const byesHTML = (r.byes && r.byes.length)
+    ? `<p class="hint">Sitting out this round: ${r.byes.map(id => esc(nameOf(id))).join(", ")}.</p>` : "";
+
+  const done = allTablesDone(r);
+  const lastRound = T.roundIndex >= T.numRounds - 1;
+
+  view.innerHTML = `
+    <div class="roundbar">
+      <span class="title">Round ${T.roundIndex + 1}<span class="muted"> / ${T.numRounds}</span></span>
+      <span class="pill">${esc(T.name)}</span>
+      <span class="spacer" style="flex:1"></span>
+      ${!locked ? `<button class="btn btn-sm" id="swapBtn">${swapSel ? "Cancel swap" : "⇄ Swap players"}</button>
+                   <button class="btn btn-sm" id="reshuffleBtn">↻ Re-pair</button>` : ""}
+    </div>
+    ${swapSel ? `<p class="hint">Tap another player to swap with <b>${esc(nameOf(r.tables[swapSel.table].players[swapSel.seat]))}</b>.</p>` : ""}
+    ${byesHTML}
+    ${tablesHTML}
+
+    <div class="btnbar">
+      ${done && !lastRound ? `<button class="btn-primary" id="nextBtn">Start round ${T.roundIndex + 2} →</button>` : ""}
+      ${done && lastRound ? `<button class="btn-primary" id="finalBtn">Set up the final →</button>` : ""}
+    </div>
+
+    <h2>Standings</h2>
+    <div class="card">${standingsTable(T.cut)}</div>
+
+    <div class="btnbar">
+      <button class="btn btn-danger" id="resetBtn">End &amp; delete tournament</button>
+    </div>
+  `;
+
+  // wire
+  if (!locked) {
+    const swapBtn = view.querySelector("#swapBtn");
+    if (swapBtn) swapBtn.onclick = () => { swapSel = swapSel ? null : { round: T.roundIndex, table: -1, seat: -1, armed: true }; render(); };
+    const resh = view.querySelector("#reshuffleBtn");
+    if (resh) resh.onclick = () => {
+      const prior = T.rounds.slice(0, T.roundIndex);
+      T.rounds[T.roundIndex] = pairRound(T.players, T.template, prior);
+      swapSel = null; save(); render();
+    };
+  }
+
+  // swap selection on player tap
+  if (swapSel) {
+    view.querySelectorAll(".seat.selectable [data-swap]").forEach(el => {
+      el.onclick = () => {
+        const seatDiv = el.closest(".seat");
+        const t = +seatDiv.dataset.t, s = +seatDiv.dataset.s;
+        if (swapSel.table < 0) { swapSel.table = t; swapSel.seat = s; render(); return; }
+        // perform swap
+        const A = r.tables[swapSel.table].players, B = r.tables[t].players;
+        const tmp = A[swapSel.seat]; A[swapSel.seat] = B[s]; B[s] = tmp;
+        swapSel = null; save(); render();
+      };
+    });
+  }
+
+  // save / edit results
+  r.tables.forEach((tb, ti) => {
+    const saveB = view.querySelector(`[data-save="${ti}"]`);
+    if (saveB) saveB.onclick = () => saveTableResult(ti);
+    const editB = view.querySelector(`[data-edit="${ti}"]`);
+    if (editB) editB.onclick = () => { tb.done = false; tb.results = null; save(); render(); };
+  });
+
+  // enable drag-to-reorder on each result list
+  if (!swapSel) view.querySelectorAll(".sortlist").forEach(makeSortable);
+
+  const nextB = view.querySelector("#nextBtn");
+  if (nextB) nextB.onclick = () => {
+    T.roundIndex++;
+    if (!T.rounds[T.roundIndex]) T.rounds.push(pairRound(T.players, T.template, T.rounds.slice(0, T.roundIndex)));
+    swapSel = null; save(); render();
+  };
+  const finalB = view.querySelector("#finalBtn");
+  if (finalB) finalB.onclick = startFinal;
+
+  view.querySelector("#resetBtn").onclick = () => { if (confirm("Delete this tournament?")) { wipe(); render(); } };
+}
+
+function saveTableResult(ti) {
+  const tb = T.rounds[T.roundIndex].tables[ti];
+  const list = view.querySelector(`.sortlist[data-t="${ti}"]`);
+  const { results, ok } = readSortResult(list);
+  if (!ok) { alert("Enter victory points for every player."); return; }
+  tb.results = results; tb.done = true; save(); render();
+}
+
+function ordinal(n) { return ["", "1st", "2nd", "3rd", "4th", "5th", "6th"][n] || n + "th"; }
+
+/* ---------- drag-to-reorder finishing list (touch + mouse) ---------- */
+function sortListHTML(ids, nameOf, tag) {
+  return `<div class="sortlist" data-t="${tag}">
+    ${ids.map(id => `
+      <div class="sortrow" data-id="${id}">
+        <span class="grip" data-grip>⠿</span>
+        <span class="posbadge"></span>
+        <span class="pname">${esc(nameOf(id))}</span>
+        <input class="vp" type="number" min="0" max="20" placeholder="VP" data-vp="${id}" />
+      </div>`).join("")}
+  </div>`;
+}
+function relabelList(list) {
+  [...list.querySelectorAll(".sortrow")].forEach((row, i) => {
+    const b = row.querySelector(".posbadge");
+    b.textContent = ordinal(i + 1);
+    b.className = "posbadge" + (i < 3 ? " r" + (i + 1) : "");
+  });
+}
+function readSortResult(list) {
+  const rows = [...list.querySelectorAll(".sortrow")];
+  const results = []; let ok = true;
+  rows.forEach((row, idx) => {
+    const v = row.querySelector(".vp").value;
+    const vp = v === "" ? null : +v;
+    if (vp === null || isNaN(vp)) ok = false;
+    results.push({ id: row.dataset.id, rank: idx + 1, vp });
+  });
+  return { results, ok };
+}
+function makeSortable(list) {
+  relabelList(list);
+  list.querySelectorAll("[data-grip]").forEach(grip => {
+    let drag = null;
+    grip.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      const row = grip.closest(".sortrow");
+      grip.setPointerCapture(e.pointerId);
+      drag = { row, startY: e.clientY, id: e.pointerId };
+      row.classList.add("dragging");
+      row.style.position = "relative"; row.style.zIndex = "10";
+    });
+    grip.addEventListener("pointermove", e => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const row = drag.row;
+      row.style.transform = `translateY(${e.clientY - drag.startY}px)`;
+      const rect = row.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      const prev = row.previousElementSibling, next = row.nextElementSibling;
+      if (prev) {
+        const pr = prev.getBoundingClientRect();
+        if (mid < pr.top + pr.height / 2) {
+          list.insertBefore(row, prev); drag.startY -= pr.height;
+          row.style.transform = `translateY(${e.clientY - drag.startY}px)`; relabelList(list); return;
+        }
+      }
+      if (next) {
+        const nr = next.getBoundingClientRect();
+        if (mid > nr.top + nr.height / 2) {
+          list.insertBefore(next, row); drag.startY += nr.height;
+          row.style.transform = `translateY(${e.clientY - drag.startY}px)`; relabelList(list); return;
+        }
+      }
+    });
+    const end = e => {
+      if (!drag) return;
+      drag.row.classList.remove("dragging");
+      drag.row.style.transform = ""; drag.row.style.position = ""; drag.row.style.zIndex = "";
+      try { grip.releasePointerCapture(e.pointerId); } catch (_) {}
+      relabelList(list); drag = null;
+    };
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+  });
+}
+
+/* ---------- final ---------- */
+function startFinal() {
+  const standings = computeStandings();
+  const finalists = standings.slice(0, T.cut).map(s => s.id);
+  T.final = {
+    players: finalists,
+    config: { ...T.finalConfig, seed: seed() },
+    results: null, done: false,
+  };
+  T.status = "final"; save(); render();
+}
+
+function renderFinal() {
+  const f = T.final;
+  const cfg = f.config;
+  const nameOf = id => (T.players.find(p => p.id === id) || {}).name || "?";
+  const standings = computeStandings();
+  const seedRank = {}; standings.forEach((s, i) => seedRank[s.id] = i + 1);
+
+  const seatsHTML = f.done
+    ? f.players.slice()
+        .sort((a, b) => f.results.find(x => x.id === a).rank - f.results.find(x => x.id === b).rank)
+        .map(id => {
+          const res = f.results.find(x => x.id === id);
+          const rc = res.rank <= 3 ? "r" + res.rank : "";
+          return `<div class="seat"><span class="rankbadge ${rc}">${res.rank}</span>
+            <span class="pname">${esc(nameOf(id))}</span><span class="muted">${res.vp} VP</span></div>`;
+        }).join("")
+    : sortListHTML(f.players, nameOf, "final");
+
+  const tags = `<span class="tag ${cfg.expansion ? "exp" : ""}">${cfg.expansion ? "Expansion" : "Base"}</span>` +
+    `<span class="tag">${cfg.ports ? "Ports" : "No ports"}</span>` +
+    `<span class="tag">${cfg.balanced ? "Balanced" : "Random"}</span>`;
+
+  view.innerHTML = `
+    <div class="roundbar"><span class="title">🏆 The Final</span><span class="pill">${esc(T.name)}</span></div>
+    <p class="hint">Top ${T.cut} from the qualifying standings (listed by seed — highest picks first). Drag into the final finishing order, enter VP, then crown the champion.</p>
+    <div class="table-card">
+      <div class="table-head"><span class="tt">Final table</span>${tags}
+        <span class="spacer" style="flex:1"></span>
+        <a class="btn btn-sm" href="${mapURL(cfg)}" target="_blank" rel="noopener">🗺 Show map</a>
+      </div>
+      ${seatsHTML}
+      ${f.done ? "" : `<div class="btnbar"><button class="btn-primary btn-sm" id="saveFinal">Crown the champion 👑</button></div>`}
+    </div>
+    ${f.done ? `<div class="btnbar"><button class="btn-primary" id="toResults">See results →</button></div>` : ""}
+    <div class="btnbar"><button class="btn btn-danger" id="resetBtn">End &amp; delete tournament</button></div>
+  `;
+
+  const flist = view.querySelector('.sortlist[data-t="final"]');
+  if (flist) makeSortable(flist);
+  const sf = view.querySelector("#saveFinal");
+  if (sf) sf.onclick = () => {
+    const { results, ok } = readSortResult(flist);
+    if (!ok) { alert("Enter victory points for every finalist."); return; }
+    f.results = results; f.done = true; T.status = "done"; save(); render();
+  };
+  const tr = view.querySelector("#toResults");
+  if (tr) tr.onclick = () => { T.status = "done"; save(); render(); };
+  view.querySelector("#resetBtn").onclick = () => { if (confirm("Delete this tournament?")) { wipe(); render(); } };
+}
+
+/* ---------- done ---------- */
+function renderDone() {
+  const nameOf = id => (T.players.find(p => p.id === id) || {}).name || "?";
+  const f = T.final;
+  const ordered = f.results.slice().sort((a, b) => a.rank - b.rank);
+  const champ = nameOf(ordered[0].id);
+  const p2 = ordered[1] ? nameOf(ordered[1].id) : "";
+  const p3 = ordered[2] ? nameOf(ordered[2].id) : "";
+
+  view.innerHTML = `
+    <div class="roundbar"><span class="title">🏆 ${esc(T.name)} — Champion</span></div>
+    <div class="champ">👑 ${esc(champ)}</div>
+    <div class="podium">
+      ${p2 ? `<div class="p p2"><div class="bar">2</div><div class="who">${esc(p2)}</div></div>` : ""}
+      <div class="p p1"><div class="bar">1</div><div class="who">${esc(champ)}</div></div>
+      ${p3 ? `<div class="p p3"><div class="bar">3</div><div class="who">${esc(p3)}</div></div>` : ""}
+    </div>
+
+    <h2>Final table result</h2>
+    <div class="card">
+      ${ordered.map(res => `<div class="seat"><span class="rankbadge ${res.rank <= 3 ? "r" + res.rank : ""}">${res.rank}</span>
+        <span class="pname">${esc(nameOf(res.id))}</span><span class="muted">${res.vp} VP</span></div>`).join("")}
+    </div>
+
+    <h2>Qualifying standings</h2>
+    <div class="card">${standingsTable(T.cut)}</div>
+
+    <div class="btnbar">
+      <button class="btn-primary" id="newBtn">New tournament</button>
+    </div>
+  `;
+  view.querySelector("#newBtn").onclick = () => { wipe(); render(); };
+}
+
+/* ---------- shared: standings table ---------- */
+function standingsTable(cut) {
+  const s = computeStandings();
+  if (!s.some(r => r.games > 0)) return `<p class="muted">No games recorded yet.</p>`;
+  return `<div class="tablescroll"><table class="stand">
+    <thead><tr><th>#</th><th>Player</th><th class="num">Pts</th><th class="num">VP</th>
+      <th class="num">W</th><th class="num">Games</th></tr></thead>
+    <tbody>
+      ${s.map((r, i) => `<tr class="${i < cut ? "cut" : ""} ${i === cut - 1 ? "cutline" : ""}">
+        <td class="rankcell">${i + 1}</td>
+        <td>${esc(r.name)}${r.byes ? ` <span class="muted" style="font-size:11px">(${r.byes} bye)</span>` : ""}</td>
+        <td class="num">${r.pts}</td><td class="num">${r.vp}</td>
+        <td class="num">${r.wins}</td><td class="num">${r.games}</td>
+      </tr>`).join("")}
+    </tbody>
+  </table></div>
+  <p class="hint" style="margin-top:8px">Green = would advance to the final (top ${cut}).</p>`;
+}
+
+/* ---------------- boot ---------------- */
+render();
+</script>
+</body>
+</html>

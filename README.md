@@ -15,7 +15,7 @@ A clean, fast **Catan map generator** — single HTML file, no build step, no de
 - **One-click / one-key regenerate** — `Space` or `R` for a fresh map
 - **Seeds & shareable links** — every map has a seed; copy the link to share the exact board
 - **Export PNG** — download the board as an image
-- Pip dots on every number token, red 6/8, robber starts on the desert
+- Pip dots on every number token, red 6/8
 
 ## Keyboard
 
@@ -26,15 +26,18 @@ A clean, fast **Catan map generator** — single HTML file, no build step, no de
 
 `tournament.html` (linked from the generator via **🏆 Tournament Mode**) runs a full Catan tournament night:
 
-- Enter players (or quick-fill "Player 1…N"), number of qualifying rounds, and the cut size (top N → final).
-- Configure **each table independently** — seat count (3–6) and map settings — so one table can run the 5–6 expansion while others play the base game.
-- Players are **auto-rotated** across tables each round to minimise repeat opponents (with a manual **swap** to override, and **re-pair** to reshuffle).
-- Record results by **dragging players into finishing order** (1st at top) and typing each one's victory points — works with touch or mouse. Scoring is **placement points** (4-player 5·4·2·1, 3-player 5·3·1) summed across games, with **VP as the tiebreaker** — matching real Catan tournament practice.
-- Live **standings** highlight who's in the cut; after the last round the top N seed into a single **Final**, then a champion + podium.
-- Each table has a **Show map** button that opens the generator with that table's exact board.
+- Enter players (or quick-fill "Player 1…N"), qualifying rounds, tables + seats (3–6 each), and one map style for the event.
+- **Everyone plays the same map each round** — view it inline on the tournament page, open it full-screen, or reroll it before play starts.
+- Players are **auto-rotated** across tables each round to minimise repeat opponents, with **Move players** (tap to swap two players, move into an empty seat, or bench someone) and **re-pair** to reshuffle.
+- Record results by **typing each player's VP (capped at 10)** — finishing places are worked out automatically as you type; equal VP counts as a tied place with split points.
+- Scoring is **placement points** (4-player 5·4·2·1, 3-player 5·3·1) summed across games, with **total VP as the tiebreaker** — matching real Catan tournament practice.
+- A **Players panel** handles real life: add a late arrival (they start on the bench, ready to be seated), drop someone who leaves (their points stay), or fix a name.
+- Choose a **playoff format**: top 2–6 into a single final, or top 8 / 12 / 16 snake-seeded into **semifinal tables** whose winners advance to the final. A **bracket view** shows seeds → semis → final → champion at any point in the night.
 - Everything **auto-saves to the browser**, so a refresh mid-night resumes where you left off.
 
 > Note: with only a few tables, some rematches are mathematically unavoidable after round 1 (four players can't be spread across three prior tables without a collision) — the pairing minimises them to the floor.
+>
+> Tip: the generator accepts `embed=1` in its URL hash to render just the board (no sidebar) — that's how the tournament page embeds its map preview.
 
 ## Publishing to GitHub Pages
 

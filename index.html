@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0f1f2e" />
 <title>Catannis — Catan Map Generator</title>
 <style>
   :root {
@@ -121,6 +122,12 @@
     pointer-events: none;
   }
   .kbds { display: inline; }
+
+  /* embed mode (#embed=1, used by the tournament page's inline preview):
+     just the board — no sidebar, no buttons, no regenerate */
+  body.embed .sidebar, body.embed .mobile-bar, body.embed .backdrop,
+  body.embed .footer-note { display: none !important; }
+  body.embed .app { grid-template-columns: 1fr; }
 
   /* --- floating mobile controls + slide-up settings drawer (hidden on desktop) --- */
   .mobile-bar {
@@ -271,6 +278,10 @@
 <script>
 "use strict";
 const NS = "http://www.w3.org/2000/svg";
+
+/* embed mode: board-only viewer for the tournament page's iframe */
+const EMBED = new URLSearchParams(location.hash.replace(/^#/, "")).get("embed") === "1";
+if (EMBED) document.body.classList.add("embed");
 
 /* ---------- geometry ---------- */
 const SIZE = 50;                     // hex radius (center -> vertex)
@@ -645,7 +656,7 @@ function run(opts) {
   renderLegend(opts);
   const map = generate(opts);
   render(map, opts);
-  history.replaceState(null, "", encodeHash(opts));
+  if (!EMBED) history.replaceState(null, "", encodeHash(opts));
   const mode = opts.fullyRandom ? "fully random" : "balanced";
   document.getElementById("status").textContent =
     `${opts.expansion ? "5–6 player" : "3–4 player"} · ${mode} · seed ${opts.seed}`;
@@ -849,6 +860,7 @@ document.getElementById("seed").addEventListener("keydown", e => { if (e.key ===
 });
 
 document.addEventListener("keydown", e => {
+  if (EMBED) return;                    // the tournament preview is read-only
   if (e.target.tagName === "INPUT") return;
   if (e.code === "Space" || e.key === "r" || e.key === "R") {
     e.preventDefault();

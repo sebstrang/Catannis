@@ -109,6 +109,19 @@
     overflow: hidden;
     touch-action: manipulation;
   }
+  /* photo night: a photo instead of the sea (switched on by the script below) */
+  .photo-night .stage {
+    background: url("beach.jpg") center / cover no-repeat, var(--sea-deep);
+  }
+  .photo-night .footer-note { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  /* ...and the first Generate after opening shows it full screen; one tap sends it away */
+  .photo-pop {
+    position: fixed; inset: 0; z-index: 100; cursor: pointer;
+    background: #000 url("beach.jpg") 47% center / cover no-repeat;
+    animation: photo-pop-in .25s ease-out;
+  }
+  .photo-pop.is-leaving { opacity: 0; transition: opacity .2s; }
+  @keyframes photo-pop-in { from { opacity: 0; transform: scale(1.12); } }
   #board {
     width: 100%; height: 100%; cursor: grab;
     transform-origin: 0 0; touch-action: none;
@@ -196,6 +209,11 @@
     .kbds { display: none; }   /* no physical keyboard on phones */
   }
 </style>
+<script>
+  // Tonight only: the sea becomes a photo, and goes back to blue at 4 am (Sydney time).
+  if (Date.now() < Date.parse("2026-09-19T04:00:00+10:00"))
+    document.documentElement.classList.add("photo-night");
+</script>
 </head>
 <body>
 <div class="app">
@@ -667,6 +685,21 @@ function regenerate(newSeed = true) {
   if (newSeed) o.seed = Math.floor(Math.random() * 1e9);
   run(o);
   document.body.classList.remove("drawer-open");  // close the phone settings sheet so the map shows
+  popPhoto();
+}
+
+/* photo night: the first Generate after opening shows the photo full screen */
+let photoPopped = false;
+function popPhoto() {
+  if (photoPopped || !document.documentElement.classList.contains("photo-night")) return;
+  photoPopped = true;
+  const pop = document.createElement("div");
+  pop.className = "photo-pop";
+  pop.addEventListener("click", () => {
+    pop.classList.add("is-leaving");
+    setTimeout(() => pop.remove(), 200);
+  }, { once: true });
+  document.body.appendChild(pop);
 }
 
 /* ---------- PNG export ---------- */

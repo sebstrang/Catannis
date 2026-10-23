@@ -271,7 +271,9 @@
         </select>
       </div>
       <div id="sfOpts" class="hidden">
-        <div class="seg" id="opt-players"><button type="button" data-v="3">3 players</button><button type="button" data-v="4">4 players</button></div>
+        <div class="field" id="playersField"><span class="label">Players</span>
+          <div class="seg" id="opt-players"><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button><button type="button" data-v="6">5–6</button></div>
+        </div>
         <div class="seg" id="opt-setup"><button type="button" data-v="official">As printed</button><button type="button" data-v="shuffle">Shuffled</button></div>
         <label class="toggle hidden" id="fogRow">
           <input type="checkbox" id="opt-fog" />
@@ -462,7 +464,8 @@ function hexVertsAt(cx, cy, s, a0) {
 const TERRAIN_CODE = { f: "wheat", b: "brick", o: "ore", p: "sheep", w: "wood", d: "desert", g: "gold" };
 const EDGE_ANGLE = { NE: -30, SE: 30, S: 90, SW: 150, NW: 210, N: 270 };
 const VERT_ANGLE = { E: 0, SE: 60, SW: 120, W: 180, NW: 240, NE: 300 };
-const PLAYER_COLORS = { orange: "#ef8a2c", blue: "#2f6fd6", white: "#f4f4f4", red: "#d8303f" };
+const PLAYER_COLORS = { orange: "#ef8a2c", blue: "#2f6fd6", white: "#f4f4f4", red: "#d8303f", brown: "#7a4a22", green: "#2e9e4f" };
+const isWater = r => r === "sea" || r === "fog" || r === "frame";
 
 const SEAFARERS = {
   "new-shores": {
@@ -605,6 +608,119 @@ const SEAFARERS = {
   },
 };
 const SCENARIO_ORDER = Object.keys(SEAFARERS).sort((a, b) => SEAFARERS[a].no - SEAFARERS[b].no);
+/* The 5–6 player extension's own rulebook (catan.com, 2020 PDF) gives each
+   scenario one board for five or six players, on a frame two rows taller:
+   56 tiles [7,8,9,8,9,8,7] or 63 tiles [8,9,10,9,10,9,8], the centre column
+   starting two half-rows below its neighbours' tops because the frame's own
+   printed sea sits at each end of it. Same cell codes as above, plus M: a
+   cell of the main island dealt at random from the Catan 5–6 bag.
+   Where the drawn harbour spots differ from the components table, the
+   drawing wins (Through the Desert draws 10 against a table of 11; Cloth
+   for Catan draws 12). */
+const SEAFARERS_56 = {
+  "new-shores": {
+    board: {
+      cols: [[3, "g5* s M M M s g10*"], [2, "w2* s M M M M s s"], [1, "b4* s M M M M M s f3*"], [2, "s M M M M M M s"],
+             [1, "p8* s M M M M M s b12*"], [2, "o11* s M M M M s s"], [3, "g9* s M M M s o6*"]],
+      mainTiles: { w: 6, b: 5, p: 6, f: 6, o: 5, d: 2 },
+      mainNumbers: [2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 12],
+      harbors: [[3, 1, "NW"], [4, 2, "N"], [1, 2, "NW"], [5, 2, "NE"], [0, 3, "NW"], [6, 3, "SE"], [0, 4, "SW"], [5, 5, "SE"], [1, 5, "S"], [3, 6, "SW"], [3, 6, "SE"]],
+      specials: 6, robberOnDesert: true,
+    },
+    rules: "The big island is the Catan 5–6 board, dealt at random; the small islands around it are printed.",
+  },
+  "four-islands": {
+    name: "The Six Islands",
+    board: {
+      cols: [[3, "p5 o6 s p2 s b5 f2"], [2, "w9 f12 s f5 o3 s b8 p9"], [1, "s b4 s s p8 w10 s w5 f6"], [2, "s s s s s s s s"],
+             [1, "b11 f9 s p3 w4 s s w4 s"], [2, "w8 o10 s o11 b10 s f3 b10"], [3, "p12 o4 s w6 s o9 p6"]],
+      harbors: [[1, 0, "N"], [4, 1, "NW"], [0, 1, "SE"], [1, 3, "NW"], [5, 1, "SW"], [6, 1, "NE"], [6, 3, "SE"], [0, 5, "NW"], [1, 7, "S"], [5, 6, "NW"], [6, 6, "SE"]],
+      specials: 6, pirate: [3, 0],
+    },
+  },
+  "fog-islands": {
+    name: "The Fog Island",
+    board: {
+      cols: [[3, "g4 ? ? ? ? ? ? g10"], [2, "? ? ? ? ? ? ? ? ?"], [1, "? ? ? s s s s ? ? ?"], [2, "? s s w5 f11 p8 s s ?"],
+             [1, "? s w8 f9 b3 o12 f10 w3 s ?"], [2, "s f2 p4 o6 o10 p9 b12 w4 s"], [3, "b5 p6 o3 d b11 b8 o11 f6"]],
+      harbors: [[5, 1, "N"], [6, 0, "SE"], [4, 3, "NW"], [6, 2, "NE"], [3, 4, "SW"], [6, 4, "SE"], [4, 6, "SW"], [6, 7, "NE"], [5, 7, "S"]],
+      fogStack: { tiles: { s: 12, g: 1, f: 2, b: 2, o: 2, p: 3, w: 3 }, numbers: [2, 2, 3, 4, 5, 5, 6, 8, 9, 9, 10, 11, 12] },
+      pirate: [3, 16],
+    },
+  },
+  "through-the-desert": {
+    board: {
+      cols: [[3, "p6 s p8* f2* s g4* s f9*"], [2, "b9 o11 s s s s s p11* w3*"], [1, "p12 f3 b12 o6 b11 o3 f9 s s o8*"], [2, "o4 w5 f10 b5 p10 w4 b8 s s"],
+             [1, "s s s f2 w8 p9 w10 s s g10*"], [2, "w5* p2* d d d d d s s"], [3, "g4* o6* b11* s w12* f5* o3* b6*"]],
+      harbors: [[1, 0, "N"], [0, 0, "NW"], [1, 1, "SW"], [2, 2, "SW"], [2, 4, "NW"], [3, 0, "NE"], [3, 2, "NE"], [2, 6, "NW"], [3, 6, "SW"], [4, 6, "S"]],
+      specials: 6, pirate: [0, 15], robber: [5, 4],
+    },
+  },
+  "forgotten-tribe": {
+    board: {
+      cols: [[3, "d! d! s o! b! s f! g!"], [2, "s s s s s s s s s"], [1, "w6 o4 f9 b8 w11 o3 p4 f6 w3 o6"], [2, "w11 p12 w5 f10 p5 b9 f2 p9 b10"],
+             [1, "f3 b5 o11 p8 b4 w10 f4 b3 w8 o5"], [2, "s s s s s s s s s"], [3, "d! d! s g! g! s p! p!"]],
+      harbors: [[0, 0, "NW"], [0, 1, "SW"], [6, 1, "SE"], [6, 3, "NE"], [0, 4, "SW"], [0, 6, "NW"], [6, 6, "SE"], [6, 7, "SE"]],
+      chits: [[6, 0, "NE"], [0, 1, "NW"], [6, 1, "NE"], [0, 3, "SW"], [0, 4, "NW"], [6, 3, "SE"], [6, 4, "NE"], [0, 6, "SW"], [6, 6, "NE"], [0, 7, "SW"]],
+      cards: [[0, 0, "N"], [6, 0, "N"], [0, 3, "NW"], [6, 4, "SE"], [0, 7, "S"], [6, 7, "S"]],
+      pirate: [0, 7], robber: [0, 1],
+    },
+    rules: "Ten victory-point chits and six development cards along the tribe's coasts.",
+  },
+  "cloth-for-catan": {
+    board: {
+      cols: [[3, "p10 w6 o5 w11 w8 f10 b6"], [2, "b9 f2 s s s s p11 o4"], [1, "o8 s s d! s d! s s o2"], [2, "s g! s s s s g! s"],
+             [1, "f11 s s d! s d! s s p3"], [2, "f3 w12 s s s s w3 o9"], [3, "w4 p6 b5 f12 b3 p11 f8"]],
+      harbors: [[1, 0, "N"], [5, 0, "N"], [0, 1, "NW"], [6, 0, "SE"], [0, 2, "SW"], [6, 3, "NE"], [6, 5, "NE"], [0, 5, "SW"], [1, 7, "SW"], [2, 8, "S"], [5, 7, "S"], [6, 6, "SE"]],
+      villages: [[3, 1, "W", 9], [3, 1, "E", 4], [2, 3, "W", 12], [2, 3, "E", 6], [4, 3, "W", 5], [4, 3, "E", 2],
+                 [2, 5, "W", 10], [2, 5, "E", 9], [4, 5, "W", 8], [4, 5, "E", 10], [3, 6, "W", 5], [3, 6, "E", 4]],
+      specials: 6, pirate: [3, 18], robber: [4, 0],
+    },
+    rules: "Twelve villages of five cloth each; the robber starts on the fields hex numbered 11.",
+  },
+  "pirate-islands": {
+    board: {
+      cols: [[3, "g3 s o8 s s w9 f5 w4"], [2, "s s s s d s f11 o9 b8"], [1, "g11 d o6 s s s p2 p10 b3 p5"], [2, "s s s d s f6 f4 o5 p8"],
+             [1, "g11 d o8 s s s w12 w6 p4 w10"], [2, "s s s s d s o3 b10 w11"], [3, "g3 s o6 s s p5 f4 b9"]],
+      harbors: [[0, 6, "NW"], [0, 7, "NW"], [0, 7, "S"], [1, 8, "S"], [3, 8, "S"], [5, 8, "S"], [6, 7, "S"], [6, 7, "NE"], [6, 6, "NE"]],
+      fortresses: [["brown", 0, 0, "NW"], ["green", 0, 0, "E"], ["orange", 2, 0, "SE"], ["blue", 4, 0, "SW"], ["white", 6, 0, "W"], ["red", 6, 0, "NE"]],
+      targets: [["brown", 0, 2, "SW"], ["green", 0, 2, "E"], ["orange", 2, 2, "SE"], ["blue", 4, 2, "SW"], ["white", 6, 2, "W"], ["red", 6, 2, "SE"]],
+      starts: [["brown", 0, 5, "NW", "NW"], ["green", 0, 5, "E", "NE"], ["orange", 3, 5, "W", "NW"], ["blue", 3, 5, "E", "NE"], ["white", 6, 5, "W", "NW"], ["red", 6, 5, "NE", "NE"]],
+      pirate: [0, 9], calm: [3, 6],
+    },
+    rules: "With five players leave out brown. When the pirate fleet ends its move on the hex marked with the white !, there's no raid that turn.",
+  },
+  "wonders-of-catan": {
+    board: {
+      cols: [[3, "s o5 w9 s p2 p11 s g6"], [2, "g6 s w10 o3 s o9 f4 s w4"], [1, "s s b8 p5 s b4 w8 o12 s s"], [2, "s f9 o3 w4 o6 f10 p9 b10 d"],
+             [1, "s b2 p5 f6 b5 f3 p8 w11 d s"], [2, "s s b11 s w11 s s d d"], [3, "g8 s p10 s f12 s s s"]],
+      harbors: [[4, 1, "N"], [2, 2, "N"], [1, 2, "N"], [0, 1, "SW"], [4, 2, "NE"], [4, 3, "SE"], [3, 3, "SW"], [0, 4, "SW"], [4, 5, "SE"], [1, 6, "SW"], [2, 7, "SW"]],
+      strait: [[1, 3, "SW"], [0, 4, "NE"], [6, 2, "SW"], [5, 3, "SE"]],
+      wasteland: [[4, 7, "E"], [4, 8, "NW"], [4, 8, "NE"], [3, 8, "NW"], [3, 8, "NE"], [3, 8, "W"]],
+      noBuild: [[1, 3, "W"], [1, 3, "SE"], [0, 4, "NW"], [0, 4, "E"], [6, 2, "W"], [6, 2, "SE"], [5, 3, "SW"], [6, 4, "NW"]],
+      specials: 6,
+    },
+    rules: "The robber starts on any of the four deserts. Seven wonders to choose from: the five from Seafarers plus the Great Bridge and the Cathedral.",
+  },
+  "new-world": {
+    board: {
+      cols: [[3, "L L L L L L L L"], [2, "L L L L L L L L L"], [1, "L L L L L L L L L L"], [2, "L L L L L L L L L"],
+             [1, "L L L L L L L L L L"], [2, "L L L L L L L L L"], [3, "L L L L L L L L"]],
+      tiles: { s: 21, d: 3, g: 4, f: 7, b: 7, o: 7, p: 7, w: 7 },
+      // 39 numbered cells; the table's column adds to 40, so one 5 is left out.
+      numbers: [2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 6, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12],
+      harborCount: 11, specials: 6,
+    },
+  },
+};
+for (const key in SEAFARERS_56) {
+  const x = SEAFARERS_56[key];
+  SEAFARERS[key][6] = x.board;
+  if (x.name) SEAFARERS[key].name6 = x.name;
+  if (x.rules) SEAFARERS[key].rules6 = x.rules;
+}
+const PLAYER_LABEL = { 3: "3", 4: "4", 6: "5–6" };
+
 
 /* --- flat-top geometry -------------------------------------------------
    Columns are 1.5 hex-radii apart; cells in a column are one hex height
@@ -636,12 +752,45 @@ function parseLayout(def, rot) {
       if (core === "s") c.kind = "sea";
       else if (core === "?") c.kind = "fog";
       else if (core === "L") c.kind = "random";
+      else if (core === "M") { c.kind = "random"; c.group = "island"; }
       else { c.kind = "land"; c.terrain = TERRAIN_CODE[core[0]]; c.number = core.length > 1 ? parseInt(core.slice(1), 10) : null; }
       Object.assign(c, sfCenter(col, c.halfRow, rot));
       cells.push(c);
     });
   });
+  // The frame's own printed sea at each end of the centre column (where the
+  // pirate often starts). Part of the board, not a tile: no index, no count.
+  const [off3, str3] = def.cols[3];
+  const n3 = str3.trim().split(/\s+/).length;
+  for (const halfRow of [off3 - 2, off3 + 2 * n3]) {
+    cells.push({ col: 3, idx: null, halfRow, kind: "frame", group: "frame", id: cells.length, ...sfCenter(3, halfRow, rot) });
+  }
   return cells;
+}
+
+/* Deal a bag of tiles over a group of cells, then its numbers over the land
+   that results: New World's whole board, and the Catan island at the heart
+   of the 5–6 Heading for New Shores. */
+function dealCells(group, tilesBag, numbersBag, opts, adj, byId, rng) {
+  const red = n => n === 6 || n === 8;
+  for (let attempt = 0; attempt < 3000; attempt++) {
+    const bag = shuffle(buildBag(tilesBag), rng);
+    group.forEach((c, i) => {
+      if (bag[i] === "s") { c.kind = "sea"; c.terrain = null; c.number = null; }
+      else { c.kind = "land"; c.terrain = TERRAIN_CODE[bag[i]]; c.number = null; }
+    });
+    if (!opts.noSameAdjacent) break;
+    const land = group.filter(c => c.kind === "land" && c.terrain !== "desert");
+    if (!land.some(c => adj[c.id].some(n => byId[n].kind === "land" && byId[n].terrain === c.terrain))) break;
+  }
+  const numbered = group.filter(c => c.kind === "land" && c.terrain !== "desert");
+  for (let attempt = 0; attempt < 4000; attempt++) {
+    const toks = shuffle(numbersBag.slice(), rng);
+    numbered.forEach((c, k) => { c.number = toks[k] ?? null; });
+    if (opts.fullyRandom) break;
+    const bad = numbered.some(c => red(c.number) && (c.terrain === "gold" || c.noRed || adj[c.id].some(n => red(byId[n].number))));
+    if (!bad) break;
+  }
 }
 
 function generateSeafarers(opts, rot) {
@@ -655,19 +804,14 @@ function generateSeafarers(opts, rot) {
   const at = (col, idx) => cells.find(c => c.col === col && c.idx === idx);
   const red = n => n === 6 || n === 8;
 
-  if (sc.random) {
-    const bag = shuffle(buildBag(def.tiles), rng);
-    cells.forEach((c, i) => {
-      if (bag[i] === "s") c.kind = "sea";
-      else { c.kind = "land"; c.terrain = TERRAIN_CODE[bag[i]]; c.number = null; }
-    });
-  }
   (def.weak || []).forEach(([col, idx]) => { const c = at(col, idx); if (c) c.weak = true; });
   if (sc.noRedByDesert) cells.forEach(c => {
     if (c.kind === "land" && c.terrain === "desert") adj[c.id].forEach(n => { byId[n].noRed = true; });
   });
+  if (sc.random) dealCells(cells.filter(c => c.kind === "random"), def.tiles, def.numbers, opts, adj, byId, rng);
+  if (def.mainTiles) dealCells(cells.filter(c => c.group === "island"), def.mainTiles, def.mainNumbers, opts, adj, byId, rng);
 
-  const shuffled = sc.random || (opts.setup === "shuffle" && !sc.fixed);
+  const shuffled = opts.setup === "shuffle" && !sc.fixed && !sc.random;
   if (shuffled) {
     for (const group of ["main", "foreign"]) {
       // terrain: the island shapes stay; the tiles within a group swap places.
@@ -682,8 +826,8 @@ function generateSeafarers(opts, rot) {
         if (!clash) break;
       }
       // numbers: the group's own tokens, dealt again
-      const numbered = land.filter(c => sc.random || c.number != null);
-      const pool = sc.random ? def.numbers.slice() : numbered.map(c => c.number);
+      const numbered = land.filter(c => c.number != null);
+      const pool = numbered.map(c => c.number);
       for (let attempt = 0; attempt < 4000; attempt++) {
         const toks = shuffle(pool.slice(), rng);
         numbered.forEach((c, k) => { c.number = toks[k]; });
@@ -697,10 +841,11 @@ function generateSeafarers(opts, rot) {
     }
   }
 
-  if (sc.fogStack && opts.revealFog) {
+  const fogStack = def.fogStack || sc.fogStack;   // the 5–6 board carries its own stack
+  if (fogStack && opts.revealFog) {
     const fog = cells.filter(c => c.kind === "fog");
-    const tiles = shuffle(buildBag(sc.fogStack.tiles), rng);
-    const nums = shuffle(sc.fogStack.numbers[players].slice(), rng);
+    const tiles = shuffle(buildBag(fogStack.tiles), rng);
+    const nums = shuffle((Array.isArray(fogStack.numbers) ? fogStack.numbers : fogStack.numbers[players]).slice(), rng);
     fog.forEach((c, i) => {
       c.revealed = true;
       if (tiles[i] === "s") { c.kind = "sea"; return; }
@@ -708,9 +853,10 @@ function generateSeafarers(opts, rot) {
     });
   }
 
-  // harbours: the printed spots, random types (5 specials, the rest 3:1)
-  const count = (sc.harborTypes && sc.harborTypes[players]) || 9;
-  const types = ["wood", "brick", "sheep", "wheat", "ore"].slice(0, count);
+  // harbours: the printed spots, random types (5 specials — 6 with a second
+  // wool in most 5–6 scenarios — and the rest 3:1)
+  const count = def.harbors ? def.harbors.length : (def.harborCount || (sc.harborTypes && sc.harborTypes[players]) || 9);
+  const types = ["wood", "brick", "sheep", "wheat", "ore", "sheep"].slice(0, Math.min(count, def.specials || 5));
   while (types.length < count) types.push("any");
   shuffle(types, rng);
   let ports = [];
@@ -723,7 +869,9 @@ function generateSeafarers(opts, rot) {
   const markers = [];
   const push = (kind, pt, extra) => markers.push(Object.assign({ kind, x: pt[0] ?? pt.x, y: pt[1] ?? pt.y }, extra || {}));
   if (def.pirate) push("pirate", sfCenter(def.pirate[0], def.pirate[1], rot));
+  if (def.calm) push("calm", sfCenter(def.calm[0], def.calm[1], rot));
   if (def.robber) { const c = at(def.robber[0], def.robber[1]); push("robber", [c.x, c.y], { onToken: c.number != null }); }
+  if (def.robberOnDesert) { const c = cells.find(x => x.kind === "land" && x.terrain === "desert"); if (c) push("robber", [c.x, c.y], { onToken: false }); }
   (def.chits || []).forEach(([col, idx, e]) => { const g = edgeOf(at(col, idx), e, rot); push("chit", [g.mx + g.nx * 14, g.my + g.ny * 14]); });
   (def.cards || []).forEach(([col, idx, e]) => { const g = edgeOf(at(col, idx), e, rot); push("card", [g.mx + g.nx * 20, g.my + g.ny * 20]); });
   (def.villages || []).forEach(([col, idx, v, num]) => push("village", vertexOf(at(col, idx), v, rot), { num }));
@@ -739,7 +887,7 @@ function generateSeafarers(opts, rot) {
 
   const resources = cells.map(c => c.kind === "land" ? c.terrain : c.kind);
   const numbers = cells.map(c => (c.kind === "land" ? c.number : null));
-  return { centers: cells, resources, numbers, ports, adj, flat: true, rot, markers, scenario: sc, players, shuffled, cells };
+  return { centers: cells, resources, numbers, ports, adj, flat: true, rot, markers, scenario: sc, players, shuffled: shuffled || !!sc.random, cells };
 }
 
 /* New World has no printed harbour spots: pick coast edges (land next to
@@ -807,6 +955,7 @@ function drawMarkers(svg, map) {
         fill: PLAYER_COLORS[m.color], stroke: "#1b1b1b", "stroke-width": 1.2, "stroke-linejoin": "round" }, svg); break;
       case "square": el("rect", { x: m.x - 8, y: m.y - 8, width: 16, height: 16, fill: m.color, stroke: "rgba(0,0,0,.4)", "stroke-width": 1 }, svg); break;
       case "bang": txt(m.x, m.y, "!", { "font-size": 24, "font-weight": 900, fill: "#c0392b", stroke: "#fff", "stroke-width": 3, "paint-order": "stroke" }); break;
+      case "calm": txt(m.x, m.y, "!", { "font-size": 40, "font-weight": 900, fill: "#fff", stroke: "#1b3a55", "stroke-width": 3, "paint-order": "stroke" }); break;
     }
   }
 }
@@ -963,9 +1112,11 @@ function render(map, opts) {
     el("polygon", { points: hull, fill: "none", stroke: "rgba(255,255,255,.18)", "stroke-width": 2 }, svg);
     map.centers.forEach((c, i) => {
       const res = map.resources[i];
-      if (res !== "sea" && res !== "fog") return;
+      if (!isWater(res)) return;
       const pts = vertsOf(c).map(v => v.map(n => n.toFixed(2)).join(",")).join(" ");
-      if (res === "sea") {
+      if (res === "frame") {
+        el("polygon", { points: pts, fill: "#1f6fae", stroke: "rgba(0,0,0,.18)", "stroke-width": 1.5, "stroke-linejoin": "round" }, svg);
+      } else if (res === "sea") {
         el("polygon", { points: pts, fill: RESOURCES.sea.color, stroke: "rgba(0,0,0,.28)", "stroke-width": 1.5, "stroke-linejoin": "round" }, svg);
       } else {
         el("polygon", { points: pts, fill: RESOURCES.fog.color, stroke: "#7f8e9c", "stroke-width": 2, "stroke-dasharray": "7 5", "stroke-linejoin": "round" }, svg);
@@ -982,7 +1133,7 @@ function render(map, opts) {
   // tiles
   map.centers.forEach((c, i) => {
     const res = map.resources[i];
-    if (res === "sea" || res === "fog") return;
+    if (isWater(res)) return;
     const def = RESOURCES[res];
     const pts = vertsOf(c).map(v => v.map(n => n.toFixed(2)).join(",")).join(" ");
     const g = el("g", {}, svg);
@@ -1091,7 +1242,7 @@ const setSeg = (id, v) => document.querySelectorAll(`#${id} button`).forEach(b =
 function readOpts() {
   return {
     game: document.getElementById("opt-game").value,
-    players: parseInt(segValue("opt-players"), 10) || 4,
+    players: parseInt(segValue("opt-players"), 10) || 4,   // 3, 4, or 6 for the 5–6 board
     setup: segValue("opt-setup") || "official",
     revealFog: document.getElementById("opt-fog").checked,
     ports: document.getElementById("opt-ports").checked,
@@ -1102,7 +1253,8 @@ function readOpts() {
 }
 function writeOptsToUI(o) {
   document.getElementById("opt-game").value = o.game;
-  setSeg("opt-players", o.players);
+  const sc = SEAFARERS[o.game];
+  setSeg("opt-players", sc && !sc[o.players] ? 4 : o.players);
   setSeg("opt-setup", o.setup);
   document.getElementById("opt-fog").checked = o.revealFog;
   document.getElementById("opt-ports").checked = o.ports;
@@ -1110,15 +1262,19 @@ function writeOptsToUI(o) {
   document.getElementById("opt-nosame").checked = o.noSameAdjacent;
   document.getElementById("seed").value = o.seed;
   // the Seafarers controls only when a scenario is chosen, and only the ones it has
-  const sc = SEAFARERS[o.game];
+  const boards = sc ? [3, 4, 6].filter(n => sc[n]) : [];
   document.getElementById("sfOpts").classList.toggle("hidden", !sc);
-  document.getElementById("opt-players").classList.toggle("hidden", !sc || !sc[3]);
+  document.querySelectorAll("#opt-players button").forEach(b => b.classList.toggle("hidden", !boards.includes(+b.dataset.v)));
+  document.getElementById("playersField").classList.toggle("hidden", boards.length < 2);
   document.getElementById("opt-setup").classList.toggle("hidden", !sc || sc.fixed || sc.random);
   document.getElementById("fogRow").classList.toggle("hidden", !sc || !sc.fogStack);
   document.getElementById("scenarioBox").classList.toggle("hidden", !sc);
   if (sc) {
+    const six = o.players === 6 && sc[6];
+    const who = boards.map(n => PLAYER_LABEL[n]);
     document.getElementById("scenarioInfo").innerHTML =
-      `<div class="meta">Scenario ${sc.no} · ${sc[3] ? "3 or 4" : "3–4"} players · ${sc.vp} points to win</div>${sc.rules}`;
+      `<div class="meta">Scenario ${sc.no} · ${who.length > 1 ? who.slice(0, -1).join(", ") + " or " + who[who.length - 1] : who[0]} players · ${sc.vp} points to win</div>` +
+      `${sc.rules}${six && sc.rules6 ? ` <b>With 5–6:</b> ${sc.rules6}` : ""}`;
   }
 }
 
@@ -1138,7 +1294,7 @@ function decodeHash() {
   return {
     seed: parseInt(p.seed, 10) || 1,
     game,
-    players: p.pl === "3" ? 3 : 4,
+    players: [3, 4, 6].includes(parseInt(p.pl, 10)) ? parseInt(p.pl, 10) : 4,
     setup: p.setup === "shuffle" ? "shuffle" : "official",
     revealFog: p.fog === "1",
     ports: p.ports !== "0",
@@ -1159,7 +1315,7 @@ function run(opts) {
   const mode = opts.fullyRandom ? "fully random" : "balanced";
   const sc = SEAFARERS[opts.game];
   document.getElementById("status").textContent = sc
-    ? `${sc.name} · ${map.players} players · ${map.shuffled ? "shuffled" : "as printed"} · seed ${opts.seed}`
+    ? `${map.players === 6 && sc.name6 ? sc.name6 : sc.name} · ${PLAYER_LABEL[map.players]} players · ${sc.random ? "random" : map.shuffled ? "shuffled" : "as printed"} · seed ${opts.seed}`
     : `${opts.game === "expansion" ? "5–6 player" : "3–4 player"} · ${mode} · seed ${opts.seed}`;
 }
 

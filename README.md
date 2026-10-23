@@ -15,6 +15,9 @@ A clean, fast **Catan map generator** — single HTML file, no build step, no de
   (deserts stay put, small islands shuffle among themselves, no 6/8 on gold). Harbours are
   drawn at random onto the printed spots, as the rules say. Fog hexes can be left face down or
   revealed; the pirate, robber, Catan chits, villages, fortresses and wonder markers are shown.
+- **Seafarers 5–6 player extension** — every scenario's 5–6 board too, from the extension's own
+  rulebook: the Six Islands, the Fog Island, the random Catan island of Heading for New Shores,
+  the six-player Pirate Islands (with the no-raid hex) and the rest, on the taller frame.
 - **Harbors/ports** on or off — docked to the actual coastline, with correct 2:1 / 3:1 mix
 - **Balanced vs. fully random numbers**
   - *Balanced* (default): no two red numbers (**6** & **8**) ever touch

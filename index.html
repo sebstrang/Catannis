@@ -176,6 +176,34 @@
     border: 1px solid var(--line); font-size: 15px; z-index: 1;
   }
 
+  /* --- game picker + Seafarers controls --- */
+  .field { margin-bottom: 8px; }
+  .field .label {
+    display: block; font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1px; margin: 0 0 6px; font-weight: 700;
+  }
+  select.sel {
+    width: 100%; padding: 10px 12px; font: inherit; font-size: 14px; font-weight: 600;
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; cursor: pointer;
+  }
+  select.sel:focus { outline: none; border-color: var(--accent-2); }
+  .seg {
+    display: flex; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; overflow: hidden; margin-bottom: 8px;
+  }
+  .seg button {
+    flex: 1; padding: 9px 6px; font-size: 13px; font-weight: 600;
+    background: transparent; color: var(--muted); border-radius: 0;
+  }
+  .seg button.on { background: var(--accent); color: #2a1a00; }
+  .scenario { font-size: 13px; line-height: 1.5; }
+  .scenario .meta {
+    font-size: 11px; color: var(--muted); letter-spacing: .5px;
+    text-transform: uppercase; margin-bottom: 4px; font-weight: 700;
+  }
+  .hidden { display: none !important; }
+
   @media (max-width: 760px) {
     html, body { height: auto; }
     .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
@@ -235,16 +263,32 @@
 
     <div class="group">
       <h3>Board</h3>
-      <label class="toggle">
-        <input type="checkbox" id="opt-expansion" />
-        <span class="txt"><span class="label">5–6 Player Expansion</span>
-          <span class="sub">30 hexes instead of 19</span></span>
-      </label>
+      <div class="field"><span class="label">Game</span>
+        <select class="sel" id="opt-game">
+          <option value="base">Catan · 3–4 players</option>
+          <option value="expansion">Catan · 5–6 player expansion</option>
+          <optgroup label="Seafarers" id="sfGroup"></optgroup>
+        </select>
+      </div>
+      <div id="sfOpts" class="hidden">
+        <div class="seg" id="opt-players"><button type="button" data-v="3">3 players</button><button type="button" data-v="4">4 players</button></div>
+        <div class="seg" id="opt-setup"><button type="button" data-v="official">As printed</button><button type="button" data-v="shuffle">Shuffled</button></div>
+        <label class="toggle hidden" id="fogRow">
+          <input type="checkbox" id="opt-fog" />
+          <span class="txt"><span class="label">Reveal the fog</span>
+            <span class="sub">Deal the face-down stack now</span></span>
+        </label>
+      </div>
       <label class="toggle">
         <input type="checkbox" id="opt-ports" checked />
         <span class="txt"><span class="label">Harbors / Ports</span>
           <span class="sub">Show trading ports around the coast</span></span>
       </label>
+    </div>
+
+    <div class="group hidden" id="scenarioBox">
+      <h3>Scenario</h3>
+      <div class="scenario" id="scenarioInfo"></div>
     </div>
 
     <div class="group">
@@ -319,6 +363,9 @@ const RESOURCES = {
   wheat: { color: "#e7b22b", label: "Wheat", icon: "🌾" },
   ore:   { color: "#7d8a99", label: "Ore",   icon: "⛰️" },
   desert:{ color: "#d9c08a", label: "Desert",icon: "🌵" },
+  gold:  { color: "#d4a62a", label: "Gold field", icon: "🪙" },
+  sea:   { color: "#2b84c7", label: "Sea",   icon: "🌊" },
+  fog:   { color: "#e9eef2", label: "Fog (unexplored)", icon: "❔" },
 };
 
 const BAGS = {
@@ -379,13 +426,389 @@ function buildAdjacency(centers) {
   }
   return adj;
 }
-function hexVertices(cx, cy, s) {
+function hexVertices(cx, cy, s) { return hexVertsAt(cx, cy, s, -90); }
+
+/* vertices of a hex whose first vertex sits at angle a0 (degrees):
+   -90 = pointy-top (the Catan board), 0 = flat-top (the Seafarers frame) */
+function hexVertsAt(cx, cy, s, a0) {
   const v = [];
   for (let i = 0; i < 6; i++) {
-    const a = ((60 * i - 90) * Math.PI) / 180;
+    const a = ((60 * i + a0) * Math.PI) / 180;
     v.push([cx + s * Math.cos(a), cy + s * Math.sin(a)]);
   }
   return v;
+}
+
+/* =====================================================================
+   SEAFARERS
+   The nine scenarios of the Catan: Seafarers rulebook (3–4 players,
+   rules revised 2009; catan.com PDF), transcribed hex by hex from the
+   set-up diagrams. The frame is drawn with flat-top hexes in columns,
+   the way it sits on the table in the book.
+
+   cols: one entry per column, [offset in half-rows, cells]. A cell is
+     s sea · ? fog (face-down) · L shuffled at random (New World) · or a
+     terrain letter and the printed number: f fields (wheat), b hills
+     (brick), o mountains (ore), p pasture (sheep), w forest (wood),
+     d desert, g gold field. A trailing * puts the cell in the "foreign"
+     group (small islands: shuffled among themselves), a trailing ! keeps
+     it exactly as printed even when shuffling.
+   harbors: [col, cell, edge] on the land hex the token faces; edges of
+     a flat-top hex are N NE SE S SW NW. Types are always random — the
+     rules say to draw them from a face-down stack.
+   pirate/robber: [col, half-row] / [col, cell]. Other keys are the
+     scenario's own markers (chits, cards, villages, fortresses…).
+   ===================================================================== */
+const TERRAIN_CODE = { f: "wheat", b: "brick", o: "ore", p: "sheep", w: "wood", d: "desert", g: "gold" };
+const EDGE_ANGLE = { NE: -30, SE: 30, S: 90, SW: 150, NW: 210, N: 270 };
+const VERT_ANGLE = { E: 0, SE: 60, SW: 120, W: 180, NW: 240, NE: 300 };
+const PLAYER_COLORS = { orange: "#ef8a2c", blue: "#2f6fd6", white: "#f4f4f4", red: "#d8303f" };
+
+const SEAFARERS = {
+  "new-shores": {
+    name: "Heading for New Shores", no: 1, vp: 14,
+    rules: "Pirate and robber. Settle on a small island for the first time: 2 special victory points per island.",
+    harborTypes: { 3: 8, 4: 9 },
+    3: {
+      cols: [[2, "f6 w5 s b10*"], [1, "f11 o3 b11 s o8*"], [0, "b8 p10 p9 w8 s s"], [1, "p2 o5 w10 s o4*"],
+             [0, "s f4 p6 s f3* s"], [1, "s s s p4* o9*"], [2, "b12* o5* s s"]],
+      harbors: [[2, 0, "NW"], [2, 0, "NE"], [0, 0, "N"], [4, 1, "N"], [0, 1, "NW"], [0, 1, "S"], [2, 3, "SE"], [4, 2, "S"]],
+      pirate: [3, 11],
+    },
+    4: {
+      cols: [[2, "f8 w2 o10 s f6*"], [1, "o3 p4 b9 p8 s b3*"], [0, "b6 w10 d f11 w5 s s"], [1, "f12 b11 f3 p9 s o10*"],
+             [0, "s p5 w6 o4 s w9* s"], [1, "s s s s b5* o2*"], [2, "o8* p11* s o4* s"]],
+      harbors: [[1, 0, "N"], [3, 0, "N"], [0, 0, "NW"], [4, 1, "NE"], [0, 1, "SW"], [4, 2, "SE"], [1, 3, "SW"], [3, 3, "SE"], [2, 4, "S"]],
+      pirate: [3, 13], robber: [2, 2],
+    },
+  },
+  "four-islands": {
+    name: "The Four Islands", no: 2, vp: 13,
+    rules: "Pirate and robber. Start on one or two islands; your first settlement on each foreign island earns 2 special victory points.",
+    harborTypes: { 3: 9, 4: 9 },
+    3: {
+      cols: [[2, "p12 s s s"], [1, "w5 p9 s o2 f5"], [0, "f11 o8 w3 s b10 b6"], [1, "s s s s s"],
+             [0, "p6 o10 s w8 b11 s"], [1, "o4 w9 s f9 b5"], [2, "s s f4 p3"]],
+      harbors: [[2, 0, "NW"], [2, 0, "SE"], [1, 1, "SW"], [4, 0, "NE"], [5, 1, "SW"], [1, 3, "NE"], [4, 4, "NW"], [2, 5, "SW"], [5, 4, "SE"]],
+      pirate: [3, 5], robber: [0, 0],
+    },
+    4: {
+      cols: [[2, "p10 f11 s f4"], [1, "f6 o4 b2 s o8"], [0, "b4 p9 s s w9 p11"], [1, "s s w6 s s"],
+             [0, "f5 w3 s b5 o10 s"], [1, "b10 s o3 f12 p5"], [2, "p8 s w9 w11"]],
+      harbors: [[2, 0, "NW"], [0, 0, "N"], [1, 1, "SE"], [4, 0, "SW"], [5, 0, "N"], [3, 2, "NE"], [2, 5, "NE"], [5, 4, "SW"], [2, 5, "SW"]],
+      pirate: [3, 11], robber: [5, 3],
+    },
+  },
+  "fog-islands": {
+    name: "The Fog Islands", no: 3, vp: 12,
+    rules: "Pirate and robber. The white hexes are unexplored: reach one with a ship or road and draw the next hex from the face-down stack; a land hex earns you one of its resource.",
+    harborTypes: { 3: 8, 4: 9 },
+    fogStack: { tiles: { s: 2, g: 2, f: 2, b: 2, o: 2, p: 1, w: 1 },
+                numbers: { 3: [3, 3, 4, 5, 6, 8, 9, 10, 11, 12], 4: [3, 4, 5, 6, 8, 9, 10, 11, 11, 12] } },
+    3: {
+      cols: [[2, "s p12 s ? ?"], [1, "s o8 f10 s ? ?"], [0, "s b11 w9 s ? s s"], [1, "w6 p5 s ? s o4"],
+             [0, "s s s ? s p8 p9"], [1, "? ? ? s w5 f3"], [2, "? ? s b6 w11"]],
+      harbors: [[3, 0, "NW"], [2, 1, "NW"], [0, 1, "N"], [1, 2, "SW"], [6, 3, "SE"], [6, 4, "S"], [3, 5, "S"], [4, 6, "SE"]],
+      pirate: [3, -1], robber: [0, 1],
+    },
+    4: {
+      cols: [[2, "p2 w5 s ? ?"], [1, "b9 p8 s ? ? s"], [0, "f6 w4 s ? ? s w5"], [1, "o3 s ? ? s f11"],
+             [0, "s s ? s s p10 o8"], [1, "? ? s p9 w6 b12"], [2, "? s b4 f10 o3"]],
+      harbors: [[2, 0, "NW"], [3, 0, "N"], [0, 0, "N"], [0, 0, "SW"], [6, 2, "SE"], [6, 4, "NE"], [6, 4, "S"], [4, 6, "SE"], [2, 6, "SE"]],
+      pirate: [3, -1], robber: [5, 5],
+    },
+  },
+  "through-the-desert": {
+    name: "Through the Desert", no: 4, vp: 14,
+    rules: "Pirate and robber (the robber starts on a desert). A desert belt splits the big island; the land strip beyond it and the small islands are foreign: your first settlement in each earns 2 special victory points.",
+    harborTypes: { 3: 8, 4: 9 },
+    3: {
+      cols: [[2, "p8 p4 s o5*"], [1, "o10 f9 w8 s f9*"], [0, "w11 b6 f2 b9 s s"], [1, "s o3 w10 s g5*"],
+             [0, "f6* d b5 p6 s s"], [1, "w3* d w4 s p11*"], [2, "g4* d s o8*"]],
+      harbors: [[2, 0, "NW"], [0, 0, "N"], [2, 1, "NE"], [0, 0, "SW"], [5, 2, "SE"], [0, 1, "S"], [2, 3, "SW"], [2, 3, "SE"]],
+      pirate: [3, 11], robber: [5, 1],
+    },
+    4: {
+      cols: [[2, "s w9 s o6* f12*"], [1, "p3 p11 o4 s s s"], [0, "b12 b6 f5 w8 s g5* p3*"], [1, "s w10 b11 p9 s s"],
+             [0, "f8* d o8 f10 w4 s b2*"], [1, "o11* d b3 p6 s f4*"], [2, "g10* d w5 s o9*"]],
+      harbors: [[1, 0, "N"], [1, 0, "SW"], [3, 1, "N"], [0, 1, "NW"], [0, 1, "S"], [2, 3, "SW"], [6, 2, "S"], [4, 4, "SW"], [4, 4, "SE"]],
+      pirate: [3, 13], robber: [5, 1],
+    },
+  },
+  "forgotten-tribe": {
+    name: "The Forgotten Tribe", no: 5, vp: 13,
+    rules: "Pirate and robber (the robber starts on a desert and never moves to the small islands). The small islands have no numbers and can't be settled; reach their marked coasts by ship to collect the tribe's gifts: victory-point chits, development cards and harbours.",
+    harborTypes: { 3: 6, 4: 6 },
+    4: {
+      cols: [[2, "d! b! s b! d! g!"], [1, "s s s s s s s"], [0, "w11 f9 o3 p8 b10 f3 s w!"], [1, "p10 b8 p4 f12 w5 p2 s"],
+             [0, "f6 w9 o11 b5 w6 o4 s p!"], [1, "s s s s s s s"], [2, "g! o! s d! o! f!"]],
+      harbors: [[0, 0, "NW"], [6, 0, "NE"], [0, 3, "SW"], [6, 3, "NE"], [2, 7, "SW"], [4, 7, "SE"]],
+      chits: [[0, 0, "SW"], [0, 3, "NW"], [0, 5, "SW"], [6, 0, "SE"], [6, 3, "SE"], [6, 5, "SE"], [2, 7, "S"], [4, 7, "S"]],
+      cards: [[0, 0, "N"], [6, 0, "N"], [0, 5, "S"], [6, 5, "S"]],
+      weak: [[2, 5], [3, 5], [4, 5]],
+      pirate: [6, 6], robber: [0, 4],
+    },
+  },
+  "cloth-for-catan": {
+    name: "Cloth for Catan", no: 6, vp: 14,
+    rules: "Pirate and robber. The four small islands in the middle belong to the Forgotten Tribe: their villages are the numbers on the corners. Connect a shipping route to a village to trade for cloth; two bolts of cloth are worth a victory point. No longest-route points.",
+    harborTypes: { 3: 9, 4: 9 },
+    4: {
+      cols: [[2, "p10 w6 o5 f10 b8"], [1, "b9 f2 s s p11 o4"], [0, "s s s g! s s o2"], [1, "s d! s s d! s"],
+             [0, "f12 s s g! s s s"], [1, "f3 w12 s s w3 o9"], [2, "w4 p6 b5 p11 f8"]],
+      harbors: [[1, 0, "N"], [5, 0, "N"], [0, 1, "NW"], [6, 0, "SE"], [0, 3, "SW"], [6, 3, "NE"], [1, 5, "SW"], [2, 6, "S"], [5, 5, "S"]],
+      villages: [[3, 1, "W", 9], [3, 1, "E", 10], [2, 3, "W", 3], [2, 3, "E", 6], [4, 3, "W", 8], [4, 3, "E", 11], [3, 4, "W", 5], [3, 4, "E", 4]],
+      pirate: [3, 13], robber: [4, 0],
+    },
+  },
+  "pirate-islands": {
+    name: "The Pirate Islands", no: 7, vp: 10,
+    rules: "No robber. The pirate fleet laps the two desert islands clockwise on every roll and raids coastal settlements. Each player gets one shipping route: from their start on the eastern island, via the circle of their colour, to the fortress of their colour. Capture it, with 10 points, to win. With 3 players leave out white. The book says not to vary this one.",
+    harborTypes: { 3: 8, 4: 8 },
+    fixed: true,
+    4: {
+      cols: [[2, "g3 o6 s s f10 b4"], [1, "b s s p s o5 w2"], [0, "f10 s s d s p11 w8 p9"], [1, "s o8 s s f6 b9 p12"],
+             [0, "f4 s s d s w3 p8 w5"], [1, "b s s d s o9 w10"], [2, "g11 o6 s s f4 b5"]],
+      harbors: [[0, 4, "SW"], [1, 6, "SW"], [2, 7, "SW"], [3, 6, "S"], [5, 6, "S"], [6, 5, "S"], [6, 4, "NE"], [6, 5, "NE"]],
+      fortresses: [["orange", 0, 0, "W"], ["blue", 1, 0, "E"], ["white", 5, 0, "W"], ["red", 6, 0, "E"]],
+      targets: [["orange", 0, 1, "SW"], ["blue", 3, 1, "W"], ["white", 3, 1, "E"], ["red", 6, 1, "SE"]],
+      starts: [["orange", 0, 4, "E", "NE"], ["blue", 3, 4, "W", "NW"], ["white", 3, 4, "E", "NE"], ["red", 6, 4, "W", "NW"]],
+      pirate: [0, 8],
+    },
+  },
+  "wonders-of-catan": {
+    name: "The Wonders of Catan", no: 8, vp: 10,
+    rules: "No pirate; the robber starts on a desert. Five wonders, one per player, each built in four levels. No settlements on the small islands, on the coloured squares (the strait and the wasteland) or on the corners marked !. Win by finishing your wonder, or with 10 points and the highest wonder.",
+    harborTypes: { 3: 9, 4: 9 },
+    noRedByDesert: true,
+    4: {
+      cols: [[2, "o5 s p11 p2 s f5!"], [1, "s w3 s w8 f9 s w4!"], [0, "b8 p9 s s b10 s s g6!"], [1, "o3 f4 o6 p5 b4 d s"],
+             [0, "o12 f6 b11 f10 p3 w9 d s"], [1, "s s s w11 s d s"], [2, "g8! b2! s o10! s s"]],
+      harbors: [[3, 0, "N"], [1, 1, "N"], [4, 1, "NE"], [3, 1, "SW"], [4, 3, "NE"], [0, 2, "SW"], [4, 4, "SE"], [1, 4, "SW"], [1, 4, "SE"]],
+      strait: [[1, 1, "SW"], [0, 2, "NE"]],
+      wasteland: [[3, 5, "NW"], [3, 5, "NE"], [3, 5, "E"], [5, 5, "NW"], [5, 5, "W"]],
+      noBuild: [[1, 1, "W"], [1, 1, "SE"], [0, 2, "NW"], [0, 2, "E"]],
+      robber: [4, 6],
+    },
+  },
+  "new-world": {
+    name: "New World", no: 9, vp: 12,
+    rules: "Everything is shuffled: 23 land and 19 sea hexes dealt at random into the frame, numbers with no 6 or 8 touching, and the nine harbours placed around the coasts. Pirate and robber start off the board. A settlement on a foreign island earns one special victory point per island.",
+    harborTypes: { 3: 9, 4: 9 },
+    random: true,
+    4: {
+      cols: [[2, "L L L L L"], [1, "L L L L L L"], [0, "L L L L L L L"], [1, "L L L L L L"],
+             [0, "L L L L L L L"], [1, "L L L L L L"], [2, "L L L L L"]],
+      tiles: { s: 19, f: 5, b: 4, o: 4, p: 5, w: 5 },
+      numbers: [2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 12],
+    },
+  },
+};
+const SCENARIO_ORDER = Object.keys(SEAFARERS).sort((a, b) => SEAFARERS[a].no - SEAFARERS[b].no);
+
+/* --- flat-top geometry -------------------------------------------------
+   Columns are 1.5 hex-radii apart; cells in a column are one hex height
+   (√3 r) apart, and neighbouring columns sit half a hex lower, so a cell's
+   place is counted in half-rows. Boards are drawn the way the book prints
+   them (rot is 0); the geometry takes a rotation so that could change. */
+const SF_COL = 1.5 * SIZE, SF_HALF = (Math.sqrt(3) / 2) * SIZE;
+function rotPt(x, y, rot) { return rot ? { x: -y, y: x } : { x, y }; }
+function sfCenter(col, halfRow, rot) { return rotPt(col * SF_COL, halfRow * SF_HALF, rot); }
+function vertAt(c, deg) {
+  const r = (deg * Math.PI) / 180;
+  return [c.x + SIZE * Math.cos(r), c.y + SIZE * Math.sin(r)];
+}
+function vertexOf(c, name, rot) { return vertAt(c, VERT_ANGLE[name] + rot); }
+function edgeOf(c, name, rot) {
+  const a = EDGE_ANGLE[name] + rot;
+  const p1 = vertAt(c, a - 30), p2 = vertAt(c, a + 30);
+  const r = (a * Math.PI) / 180;
+  return { a: p1, b: p2, mx: (p1[0] + p2[0]) / 2, my: (p1[1] + p2[1]) / 2, nx: Math.cos(r), ny: Math.sin(r) };
+}
+
+function parseLayout(def, rot) {
+  const cells = [];
+  def.cols.forEach(([off, str], col) => {
+    str.trim().split(/\s+/).forEach((code, idx) => {
+      const fixed = code.endsWith("!"), foreign = code.endsWith("*");
+      const core = code.replace(/[!*]$/, "");
+      const c = { col, idx, halfRow: off + 2 * idx, fixed, group: foreign ? "foreign" : "main", id: cells.length };
+      if (core === "s") c.kind = "sea";
+      else if (core === "?") c.kind = "fog";
+      else if (core === "L") c.kind = "random";
+      else { c.kind = "land"; c.terrain = TERRAIN_CODE[core[0]]; c.number = core.length > 1 ? parseInt(core.slice(1), 10) : null; }
+      Object.assign(c, sfCenter(col, c.halfRow, rot));
+      cells.push(c);
+    });
+  });
+  return cells;
+}
+
+function generateSeafarers(opts, rot) {
+  const sc = SEAFARERS[opts.game];
+  const players = sc[opts.players] ? opts.players : 4;
+  const def = sc[players];
+  const rng = makeRng(opts.seed);
+  const cells = parseLayout(def, rot);
+  const adj = buildAdjacency(cells);
+  const byId = cells;
+  const at = (col, idx) => cells.find(c => c.col === col && c.idx === idx);
+  const red = n => n === 6 || n === 8;
+
+  if (sc.random) {
+    const bag = shuffle(buildBag(def.tiles), rng);
+    cells.forEach((c, i) => {
+      if (bag[i] === "s") c.kind = "sea";
+      else { c.kind = "land"; c.terrain = TERRAIN_CODE[bag[i]]; c.number = null; }
+    });
+  }
+  (def.weak || []).forEach(([col, idx]) => { const c = at(col, idx); if (c) c.weak = true; });
+  if (sc.noRedByDesert) cells.forEach(c => {
+    if (c.kind === "land" && c.terrain === "desert") adj[c.id].forEach(n => { byId[n].noRed = true; });
+  });
+
+  const shuffled = sc.random || (opts.setup === "shuffle" && !sc.fixed);
+  if (shuffled) {
+    for (const group of ["main", "foreign"]) {
+      // terrain: the island shapes stay; the tiles within a group swap places.
+      // Deserts stay where the book puts them (the rules place them first).
+      const land = cells.filter(c => c.kind === "land" && c.group === group && !c.fixed && c.terrain !== "desert");
+      if (!land.length) continue;
+      for (let attempt = 0; attempt < 3000; attempt++) {
+        const terr = shuffle(land.map(c => c.terrain), rng);
+        land.forEach((c, k) => { c.terrain = terr[k]; });
+        if (!opts.noSameAdjacent) break;
+        const clash = land.some(c => adj[c.id].some(n => byId[n].kind === "land" && byId[n].terrain === c.terrain));
+        if (!clash) break;
+      }
+      // numbers: the group's own tokens, dealt again
+      const numbered = land.filter(c => sc.random || c.number != null);
+      const pool = sc.random ? def.numbers.slice() : numbered.map(c => c.number);
+      for (let attempt = 0; attempt < 4000; attempt++) {
+        const toks = shuffle(pool.slice(), rng);
+        numbered.forEach((c, k) => { c.number = toks[k]; });
+        if (opts.fullyRandom) break;
+        const bad = numbered.some(c =>
+          (red(c.number) && (c.terrain === "gold" || c.noRed)) ||
+          (c.weak && [5, 6, 8, 9].includes(c.number)) ||
+          (red(c.number) && adj[c.id].some(n => red(byId[n].number))));
+        if (!bad) break;
+      }
+    }
+  }
+
+  if (sc.fogStack && opts.revealFog) {
+    const fog = cells.filter(c => c.kind === "fog");
+    const tiles = shuffle(buildBag(sc.fogStack.tiles), rng);
+    const nums = shuffle(sc.fogStack.numbers[players].slice(), rng);
+    fog.forEach((c, i) => {
+      c.revealed = true;
+      if (tiles[i] === "s") { c.kind = "sea"; return; }
+      c.kind = "land"; c.terrain = TERRAIN_CODE[tiles[i]]; c.number = nums.pop() ?? null;
+    });
+  }
+
+  // harbours: the printed spots, random types (5 specials, the rest 3:1)
+  const count = (sc.harborTypes && sc.harborTypes[players]) || 9;
+  const types = ["wood", "brick", "sheep", "wheat", "ore"].slice(0, count);
+  while (types.length < count) types.push("any");
+  shuffle(types, rng);
+  let ports = [];
+  if (opts.ports) {
+    if (def.harbors) ports = def.harbors.map(([col, idx, edge], i) => ({ ...edgeOf(at(col, idx), edge, rot), type: types[i] }));
+    else ports = coastPorts(cells, adj, count, types, rot, rng);
+  }
+
+  // the scenario's markers
+  const markers = [];
+  const push = (kind, pt, extra) => markers.push(Object.assign({ kind, x: pt[0] ?? pt.x, y: pt[1] ?? pt.y }, extra || {}));
+  if (def.pirate) push("pirate", sfCenter(def.pirate[0], def.pirate[1], rot));
+  if (def.robber) { const c = at(def.robber[0], def.robber[1]); push("robber", [c.x, c.y], { onToken: c.number != null }); }
+  (def.chits || []).forEach(([col, idx, e]) => { const g = edgeOf(at(col, idx), e, rot); push("chit", [g.mx + g.nx * 14, g.my + g.ny * 14]); });
+  (def.cards || []).forEach(([col, idx, e]) => { const g = edgeOf(at(col, idx), e, rot); push("card", [g.mx + g.nx * 20, g.my + g.ny * 20]); });
+  (def.villages || []).forEach(([col, idx, v, num]) => push("village", vertexOf(at(col, idx), v, rot), { num }));
+  (def.fortresses || []).forEach(([color, col, idx, v]) => push("fortress", vertexOf(at(col, idx), v, rot), { color }));
+  (def.targets || []).forEach(([color, col, idx, v]) => push("target", vertexOf(at(col, idx), v, rot), { color }));
+  (def.starts || []).forEach(([color, col, idx, v, e]) => {
+    push("house", vertexOf(at(col, idx), v, rot), { color });
+    const g = edgeOf(at(col, idx), e, rot); push("ship", [g.mx + g.nx * 10, g.my + g.ny * 10], { color });
+  });
+  (def.strait || []).forEach(([col, idx, v]) => push("square", vertexOf(at(col, idx), v, rot), { color: "#7d3fb5" }));
+  (def.wasteland || []).forEach(([col, idx, v]) => push("square", vertexOf(at(col, idx), v, rot), { color: "#7a3b2e" }));
+  (def.noBuild || []).forEach(([col, idx, v]) => push("bang", vertexOf(at(col, idx), v, rot)));
+
+  const resources = cells.map(c => c.kind === "land" ? c.terrain : c.kind);
+  const numbers = cells.map(c => (c.kind === "land" ? c.number : null));
+  return { centers: cells, resources, numbers, ports, adj, flat: true, rot, markers, scenario: sc, players, shuffled, cells };
+}
+
+/* New World has no printed harbour spots: pick coast edges (land next to
+   sea or the frame) spread evenly around the board. */
+function coastPorts(cells, adj, count, types, rot, rng) {
+  const cand = [];
+  cells.forEach(c => {
+    if (c.kind !== "land") return;
+    for (const e of Object.keys(EDGE_ANGLE)) {
+      const g = edgeOf(c, e, rot);
+      const beyond = { x: c.x + g.nx * Math.sqrt(3) * SIZE, y: c.y + g.ny * Math.sqrt(3) * SIZE };
+      const n = cells.find(o => Math.hypot(o.x - beyond.x, o.y - beyond.y) < SIZE * 0.5);
+      if (!n || n.kind !== "land") cand.push({ ...g, cell: c, ang: Math.atan2(g.my, g.mx) });
+    }
+  });
+  cand.sort((a, b) => a.ang - b.ang);
+  const start = Math.floor(rng() * cand.length), used = new Set(), ports = [];
+  for (let i = 0; i < count && cand.length; i++) {
+    let k = (start + Math.round((i * cand.length) / count)) % cand.length, tries = 0;
+    while (used.has(cand[k].cell.id) && tries++ < cand.length) k = (k + 1) % cand.length;
+    used.add(cand[k].cell.id);
+    ports.push({ ...cand[k], type: types[i] });
+  }
+  return ports;
+}
+
+/* the frame: the convex hull of every cell, drawn with a fat round-joined
+   stroke so it swells out like the puzzle pieces around the board */
+function convexHull(pts) {
+  const P = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [], upper = [];
+  for (const p of P) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  for (const p of P.reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+function drawMarkers(svg, map) {
+  const txt = (x, y, str, attrs) => { const t = el("text", Object.assign({ x, y, "text-anchor": "middle", "dominant-baseline": "central" }, attrs), svg); t.textContent = str; return t; };
+  const house = (x, y, color) => el("polygon", {
+    points: [[-9, 7], [9, 7], [9, -2], [0, -10], [-9, -2]].map(([dx, dy]) => `${(x + dx).toFixed(1)},${(y + dy).toFixed(1)}`).join(" "),
+    fill: PLAYER_COLORS[color], stroke: "#1b1b1b", "stroke-width": 1.5, "stroke-linejoin": "round",
+  }, svg);
+  for (const m of map.markers) {
+    switch (m.kind) {
+      case "pirate": txt(m.x, m.y, "🏴‍☠️", { "font-size": 30, filter: "url(#iconShadow)" }); break;
+      case "robber": {
+        const x = m.onToken ? m.x + 24 : m.x, y = m.onToken ? m.y - 24 : m.y;
+        el("path", { d: `M${x - 8},${y + 12} Q${x - 9},${y - 4} ${x},${y - 6} Q${x + 9},${y - 4} ${x + 8},${y + 12} Z`, fill: "#9aa3ab", stroke: "#3b4248", "stroke-width": 1.5 }, svg);
+        el("circle", { cx: x, cy: y - 9, r: 5.5, fill: "#9aa3ab", stroke: "#3b4248", "stroke-width": 1.5 }, svg);
+        break;
+      }
+      case "chit": el("circle", { cx: m.x, cy: m.y, r: 9, fill: "#e8762b", stroke: "#7a3d12", "stroke-width": 1.5 }, svg);
+        txt(m.x, m.y + 0.5, "1", { "font-size": 10, "font-weight": 800, fill: "#3a1d08" }); break;
+      case "card": el("rect", { x: m.x - 9, y: m.y - 12, width: 18, height: 24, rx: 2, fill: "#f5f1e6", stroke: "#555", "stroke-width": 1.2 }, svg);
+        txt(m.x, m.y + 0.5, "?", { "font-size": 13, "font-weight": 800, fill: "#555" }); break;
+      case "village": el("circle", { cx: m.x, cy: m.y, r: 14, fill: "#f4ecd8", stroke: "#6b4a2b", "stroke-width": 2 }, svg);
+        txt(m.x, m.y + 0.5, m.num, { "font-size": 13, "font-weight": 800, fill: (m.num === 6 || m.num === 8) ? "#c0392b" : "#222" }); break;
+      case "fortress":
+        [6, 3, 0].forEach(d => el("circle", { cx: m.x + d, cy: m.y + d, r: 9, fill: "#e8762b", stroke: "#7a3d12", "stroke-width": 1.2 }, svg));
+        house(m.x - 2, m.y - 6, m.color); break;
+      case "target": el("circle", { cx: m.x, cy: m.y, r: 11, fill: PLAYER_COLORS[m.color], stroke: "#fff", "stroke-width": 2 }, svg); break;
+      case "house": house(m.x, m.y, m.color); break;
+      case "ship": el("path", { d: `M${m.x - 9},${m.y + 2} L${m.x + 9},${m.y + 2} L${m.x + 6},${m.y + 7} L${m.x - 6},${m.y + 7} Z M${m.x},${m.y + 2} L${m.x},${m.y - 9} L${m.x + 7},${m.y - 2} Z`,
+        fill: PLAYER_COLORS[m.color], stroke: "#1b1b1b", "stroke-width": 1.2, "stroke-linejoin": "round" }, svg); break;
+      case "square": el("rect", { x: m.x - 8, y: m.y - 8, width: 16, height: 16, fill: m.color, stroke: "rgba(0,0,0,.4)", "stroke-width": 1 }, svg); break;
+      case "bang": txt(m.x, m.y, "!", { "font-size": 24, "font-weight": 900, fill: "#c0392b", stroke: "#fff", "stroke-width": 3, "paint-order": "stroke" }); break;
+    }
+  }
 }
 
 /* ---------- map generation ---------- */
@@ -396,7 +819,8 @@ function buildBag(counts) {
 }
 
 function generate(opts) {
-  const key = opts.expansion ? "expansion" : "base";
+  if (SEAFARERS[opts.game]) return generateSeafarers(opts, 0);
+  const key = opts.game === "expansion" ? "expansion" : "base";
   const layout = LAYOUTS[key];
   const bag = BAGS[key];
   const rng = makeRng(opts.seed);
@@ -504,14 +928,16 @@ function el(tag, attrs, parent) {
 }
 
 function render(map, opts) {
+  const vertsOf = c => map.flat ? hexVertsAt(c.x, c.y, SIZE, map.rot) : hexVertices(c.x, c.y, SIZE);
   // bounds
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  map.centers.forEach(c => {
-    hexVertices(c.x, c.y, SIZE).forEach(([x, y]) => {
-      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-    });
-  });
+  const grow = (x, y, m) => {
+    minX = Math.min(minX, x - m); maxX = Math.max(maxX, x + m);
+    minY = Math.min(minY, y - m); maxY = Math.max(maxY, y + m);
+  };
+  const allVerts = [];
+  map.centers.forEach(c => vertsOf(c).forEach(v => { allVerts.push(v); grow(v[0], v[1], map.flat ? SIZE * 0.95 : 0); }));
+  (map.markers || []).forEach(m => grow(m.x, m.y, 22));
   const portReach = 46;
   map.ports.forEach(p => {
     const px = p.mx + p.nx * portReach, py = p.my + p.ny * portReach;
@@ -530,6 +956,25 @@ function render(map, opts) {
   // (no sea rect here — the page's gradient shows through so there's no seam;
   //  the ocean is painted onto the canvas at PNG-export time instead)
 
+  if (map.flat) {
+    // the frame, then the sea and fog hexes the islands sit in
+    const hull = convexHull(allVerts).map(v => v.map(n => n.toFixed(1)).join(",")).join(" ");
+    el("polygon", { points: hull, fill: "#17598f", stroke: "#17598f", "stroke-width": SIZE * 1.7, "stroke-linejoin": "round" }, svg);
+    el("polygon", { points: hull, fill: "none", stroke: "rgba(255,255,255,.18)", "stroke-width": 2 }, svg);
+    map.centers.forEach((c, i) => {
+      const res = map.resources[i];
+      if (res !== "sea" && res !== "fog") return;
+      const pts = vertsOf(c).map(v => v.map(n => n.toFixed(2)).join(",")).join(" ");
+      if (res === "sea") {
+        el("polygon", { points: pts, fill: RESOURCES.sea.color, stroke: "rgba(0,0,0,.28)", "stroke-width": 1.5, "stroke-linejoin": "round" }, svg);
+      } else {
+        el("polygon", { points: pts, fill: RESOURCES.fog.color, stroke: "#7f8e9c", "stroke-width": 2, "stroke-dasharray": "7 5", "stroke-linejoin": "round" }, svg);
+        const q = el("text", { x: c.x, y: c.y + 1, "text-anchor": "middle", "dominant-baseline": "central", "font-size": 34, "font-weight": 800, fill: "#5b6b7a" }, svg);
+        q.textContent = "?";
+      }
+    });
+  }
+
   // ports first (drawn under tiles' overlap region but above sea)
   const portLayer = el("g", {}, svg);
   map.ports.forEach(p => drawPort(portLayer, p));
@@ -537,8 +982,9 @@ function render(map, opts) {
   // tiles
   map.centers.forEach((c, i) => {
     const res = map.resources[i];
+    if (res === "sea" || res === "fog") return;
     const def = RESOURCES[res];
-    const pts = hexVertices(c.x, c.y, SIZE).map(v => v.map(n => n.toFixed(2)).join(",")).join(" ");
+    const pts = vertsOf(c).map(v => v.map(n => n.toFixed(2)).join(",")).join(" ");
     const g = el("g", {}, svg);
     el("polygon", {
       points: pts, fill: def.color,
@@ -561,6 +1007,8 @@ function render(map, opts) {
 
     if (map.numbers[i] != null) drawToken(g, c.x, c.y + 14, map.numbers[i]);
   });
+
+  if (map.markers) drawMarkers(svg, map);
 
   // gradient + filter defs
   const defs = el("defs", {}, svg);
@@ -614,9 +1062,14 @@ function drawPort(g, p) {
 }
 
 /* ---------- legend ---------- */
-function renderLegend(opts) {
-  const key = opts.expansion ? "expansion" : "base";
-  const tiles = BAGS[key].tiles;
+function renderLegend(opts, map) {
+  let tiles;
+  if (map && map.flat) {
+    tiles = {};
+    map.resources.forEach(r => { tiles[r] = (tiles[r] || 0) + 1; });
+  } else {
+    tiles = BAGS[opts.game === "expansion" ? "expansion" : "base"].tiles;
+  }
   const box = document.getElementById("legend");
   box.innerHTML = "";
   Object.keys(RESOURCES).forEach(k => {
@@ -632,9 +1085,15 @@ function renderLegend(opts) {
 }
 
 /* ---------- options + state ---------- */
+const segValue = id => (document.querySelector(`#${id} button.on`) || {}).dataset?.v;
+const setSeg = (id, v) => document.querySelectorAll(`#${id} button`).forEach(b => b.classList.toggle("on", b.dataset.v === String(v)));
+
 function readOpts() {
   return {
-    expansion: document.getElementById("opt-expansion").checked,
+    game: document.getElementById("opt-game").value,
+    players: parseInt(segValue("opt-players"), 10) || 4,
+    setup: segValue("opt-setup") || "official",
+    revealFog: document.getElementById("opt-fog").checked,
     ports: document.getElementById("opt-ports").checked,
     fullyRandom: document.getElementById("opt-random").checked,
     noSameAdjacent: document.getElementById("opt-nosame").checked,
@@ -642,42 +1101,66 @@ function readOpts() {
   };
 }
 function writeOptsToUI(o) {
-  document.getElementById("opt-expansion").checked = o.expansion;
+  document.getElementById("opt-game").value = o.game;
+  setSeg("opt-players", o.players);
+  setSeg("opt-setup", o.setup);
+  document.getElementById("opt-fog").checked = o.revealFog;
   document.getElementById("opt-ports").checked = o.ports;
   document.getElementById("opt-random").checked = o.fullyRandom;
   document.getElementById("opt-nosame").checked = o.noSameAdjacent;
   document.getElementById("seed").value = o.seed;
+  // the Seafarers controls only when a scenario is chosen, and only the ones it has
+  const sc = SEAFARERS[o.game];
+  document.getElementById("sfOpts").classList.toggle("hidden", !sc);
+  document.getElementById("opt-players").classList.toggle("hidden", !sc || !sc[3]);
+  document.getElementById("opt-setup").classList.toggle("hidden", !sc || sc.fixed || sc.random);
+  document.getElementById("fogRow").classList.toggle("hidden", !sc || !sc.fogStack);
+  document.getElementById("scenarioBox").classList.toggle("hidden", !sc);
+  if (sc) {
+    document.getElementById("scenarioInfo").innerHTML =
+      `<div class="meta">Scenario ${sc.no} · ${sc[3] ? "3 or 4" : "3–4"} players · ${sc.vp} points to win</div>${sc.rules}`;
+  }
 }
 
 function encodeHash(o) {
-  return `#seed=${o.seed}&exp=${o.expansion?1:0}&ports=${o.ports?1:0}` +
-         `&rand=${o.fullyRandom?1:0}&nsr=${o.noSameAdjacent?1:0}`;
+  // exp= is kept for links made before the game picker existed (and the tournament page)
+  return `#seed=${o.seed}&game=${o.game}&exp=${o.game === "expansion" ? 1 : 0}&pl=${o.players}` +
+         `&setup=${o.setup}&fog=${o.revealFog ? 1 : 0}&ports=${o.ports ? 1 : 0}` +
+         `&rand=${o.fullyRandom ? 1 : 0}&nsr=${o.noSameAdjacent ? 1 : 0}`;
 }
 function decodeHash() {
   const h = location.hash.replace(/^#/, "");
   if (!h) return null;
   const p = Object.fromEntries(h.split("&").map(s => s.split("=")));
   if (p.seed == null) return null;
+  const game = (p.game && (SEAFARERS[p.game] || p.game === "base" || p.game === "expansion")) ? p.game
+             : (p.exp === "1" ? "expansion" : "base");
   return {
     seed: parseInt(p.seed, 10) || 1,
-    expansion: p.exp === "1",
+    game,
+    players: p.pl === "3" ? 3 : 4,
+    setup: p.setup === "shuffle" ? "shuffle" : "official",
+    revealFog: p.fog === "1",
     ports: p.ports !== "0",
     fullyRandom: p.rand === "1",
     noSameAdjacent: p.nsr === "1",
   };
 }
 
-let current = null;
+let current = null, currentMap = null;
 function run(opts) {
   current = opts;
   writeOptsToUI(opts);
-  renderLegend(opts);
   const map = generate(opts);
+  currentMap = map;
+  renderLegend(opts, map);
   render(map, opts);
   if (!EMBED) history.replaceState(null, "", encodeHash(opts));
   const mode = opts.fullyRandom ? "fully random" : "balanced";
-  document.getElementById("status").textContent =
-    `${opts.expansion ? "5–6 player" : "3–4 player"} · ${mode} · seed ${opts.seed}`;
+  const sc = SEAFARERS[opts.game];
+  document.getElementById("status").textContent = sc
+    ? `${sc.name} · ${map.players} players · ${map.shuffled ? "shuffled" : "as printed"} · seed ${opts.seed}`
+    : `${opts.game === "expansion" ? "5–6 player" : "3–4 player"} · ${mode} · seed ${opts.seed}`;
 }
 
 function regenerate(newSeed = true) {
@@ -888,9 +1371,24 @@ document.getElementById("copyLink").addEventListener("click", () => {
 document.getElementById("useSeed").addEventListener("click", () => run(readOpts()));
 document.getElementById("seed").addEventListener("keydown", e => { if (e.key === "Enter") run(readOpts()); });
 
-["opt-expansion", "opt-ports", "opt-random", "opt-nosame"].forEach(id => {
+["opt-game", "opt-fog", "opt-ports", "opt-random", "opt-nosame"].forEach(id => {
   document.getElementById(id).addEventListener("change", () => run(readOpts()));
 });
+["opt-players", "opt-setup"].forEach(id => {
+  document.querySelectorAll(`#${id} button`).forEach(b => b.addEventListener("click", () => {
+    setSeg(id, b.dataset.v);
+    run(readOpts());
+  }));
+});
+// the scenario list, in the book's order
+(function fillScenarios() {
+  const group = document.getElementById("sfGroup");
+  SCENARIO_ORDER.forEach(key => {
+    const o = document.createElement("option");
+    o.value = key; o.textContent = `${SEAFARERS[key].no} · ${SEAFARERS[key].name}`;
+    group.appendChild(o);
+  });
+})();
 
 document.addEventListener("keydown", e => {
   if (EMBED) return;                    // the tournament preview is read-only
@@ -909,7 +1407,8 @@ window.addEventListener("hashchange", () => {
 /* ---------- init ---------- */
 const initial = decodeHash() || {
   seed: Math.floor(Math.random() * 1e9),
-  expansion: false, ports: true, fullyRandom: false, noSameAdjacent: false,
+  game: "base", players: 4, setup: "official", revealFog: false,
+  ports: true, fullyRandom: false, noSameAdjacent: false,
 };
 run(initial);
 </script>

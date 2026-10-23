@@ -7,6 +7,14 @@ A clean, fast **Catan map generator** — single HTML file, no build step, no de
 ## Features
 
 - **3–4 player** (19 hexes) or **5–6 player expansion** (30 hexes)
+- **Seafarers** — all nine scenarios of the Catan: Seafarers rulebook, transcribed hex by hex
+  from the official set-up diagrams: Heading for New Shores, The Four Islands, The Fog Islands,
+  Through the Desert (each with their 3- and 4-player boards), The Forgotten Tribe, Cloth for
+  Catan, The Pirate Islands, The Wonders of Catan and New World. Pick **As printed** for the
+  book's layout or **Shuffled** to keep the island shapes and re-deal the land and numbers
+  (deserts stay put, small islands shuffle among themselves, no 6/8 on gold). Harbours are
+  drawn at random onto the printed spots, as the rules say. Fog hexes can be left face down or
+  revealed; the pirate, robber, Catan chits, villages, fortresses and wonder markers are shown.
 - **Harbors/ports** on or off — docked to the actual coastline, with correct 2:1 / 3:1 mix
 - **Balanced vs. fully random numbers**
   - *Balanced* (default): no two red numbers (**6** & **8**) ever touch
